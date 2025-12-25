@@ -2,137 +2,111 @@
 
 **Project:** ThreadIt Forum Backend  
 **Author:** LongDx  
-**Version:** 1.0  
+**Version:** 2.2 (Hybrid: Latinized Prefix + NanoID Suffix)  
 **Status:** Approved
 
 ---
 
 ## 1. Bối cảnh & Vấn đề (Context & Problem)
 
-Trong quá trình thiết kế hệ thống định danh người dùng (User Identity), chúng ta đối mặt với các thách thức sau:
+Trong quá trình thiết kế hệ thống định danh người dùng (User Identity), chúng ta đối mặt với các thách thức:
 
-- **Quyền tự do đặt tên (Naming Freedom):** Người dùng muốn đặt tên hiển thị (Display Name) tùy ý (trùng nhau, dùng ký tự đặc biệt, Teencode, Emoji, tiếng Trung/Nhật/Hàn...).
+-   **Quyền tự do đặt tên:** User muốn đặt tên hiển thị tùy ý (Emoji, Tiếng Trung/Nhật...).
+-   **Khả năng tìm kiếm toàn cầu:** User quốc tế cần một cách dễ dàng để gõ và tìm kiếm những cái tên đặc biệt này.
+-   **Độc nhất & Bảo mật:** Cần một mã định danh duy nhất, không đoán được (Unpredictable) và có thể thay đổi (Re-rollable) khi cần.
 
-- **Khả năng tìm kiếm toàn cầu (Global Searchability):** Nếu User đặt tên là chữ tượng hình (ví dụ: 甘米らくれ), người dùng quốc tế hoặc thiết bị không hỗ trợ font sẽ không thể gõ hoặc tìm kiếm được user đó.
-
-- **Hiệu năng Database (Performance):** Việc tìm kiếm bằng String (username) chậm hơn nhiều so với tìm kiếm bằng số (ID).
-
-- **Thẩm mỹ & Bảo mật (Aesthetics & Privacy):** Không muốn lộ ID dạng số thứ tự (user/1, user/2) gây cảm giác thiếu chuyên nghiệp và dễ bị cào dữ liệu (enumeration attack).
+> [!NOTE]
+> Chi tiết triển khai code và thiết kế DB được mô tả tại [user-identity-spec.md](file:///Users/techmax/Documents/GitHub/forum-backend/docs/user-identity-spec.md).
 
 ---
 
 ## 2. Giải pháp Kiến trúc (Architecture Solution)
 
-Chúng tôi áp dụng chiến lược **Dual-Key (Định danh kép)** kết hợp với thuật toán **Latinh hóa (Romanization)**.
+Chúng tôi áp dụng chiến lược **Hybrid User Tag**: Kết hợp giữa **Gợi nhớ (Latinized Name)** và **Bảo mật (Random NanoID)**.
 
-### 2.1. Cấu trúc ID
+### 2.1. Cấu trúc Public Tag
 
-Mỗi User sẽ có 2 tầng định danh:
+Mỗi User sẽ có một "Public Tag" dùng để định danh trên giao diện và URL:
 
-| Loại ID | Kiểu dữ liệu | Mô tả | Mục đích |
-|---------|--------------|-------|----------|
-| **Internal ID** | Long (TSID) | ID số ngẫu nhiên có sắp xếp (Snowflake style). | Dùng làm Primary Key trong DB, Join bảng, Indexing. Tốc độ truy vấn tối đa. |
-| **Public Tag** | String | Format: Initials + # + Hash. | Dùng để hiển thị trên UI, URL, chia sẻ profile và tìm kiếm bạn bè. |
+**Format:** `Latinized_Initials` + `#` + `NanoID`
 
-### 2.2. Format Public Tag
+**Ví dụ:**
+-   User: "李小龙" (Lý Tiểu Long)
+-   Latinized: "LL"
+-   NanoID: "Xy9z"
+-   **FINAL TAG:** `LL#Xy9z`
 
-Public Tag được sinh ra tự động từ Display Name và Internal ID theo công thức:
+### 2.2. Phân tích thành phần
 
-$$PublicTag = LatinInitials(DisplayName) + "\#" + Base62(InternalID)$$
-
-**Ví dụ:** User tên "李小龙" (Lý Tiểu Long) có ID 4810293 -> Tag: `LL#7x9A`
+| Thành phần | Nguồn gốc | Công nghệ | Mục đích |
+| :--- | :--- | :--- | :--- |
+| **Prefix (Tiền tố)** | Display Name | **IBM ICU4J** | Giúp ID trở nên thân thiện, dễ đọc, dễ nhớ. Giải quyết bài toán "Chữ tượng hình". |
+| **Suffix (Hậu tố)** | Random Generated | **NanoID** | Đảm bảo tính duy nhất (Unique), bảo mật (không lộ ID thật), và cho phép đổi mới (Re-roll). |
 
 ---
 
 ## 3. Thuật toán xử lý (Algorithm Detail)
 
-### 3.1. Xử lý phần Initials (Tiền tố) - "The Latinizer"
+### 3.1. Xử lý phần Prefix (Tiền tố) - "The Latinizer"
 
-Để giải quyết bài toán "Chữ tượng hình", hệ thống sử dụng thư viện **IBM ICU4J** để chuyển đổi mọi ngôn ngữ về ký tự Latin (A-Z).
+Sử dụng thư viện **IBM ICU4J** để chuyển đổi mọi ngôn ngữ về ký tự Latin (A-Z).
 
-**Bước 1 - Transliteration:** Dùng bộ dịch Any-Latin; Latin-ASCII để phiên âm.
-- 李 -> Li
-- 甘 -> Gan
-- Nguyễn -> Nguyen
+1.  **Transliteration:** Dùng bộ dịch Any-Latin; Latin-ASCII.
+    *   "李小龙" -> "Li Xiao Long"
+    *   "Nguyễn Văn A" -> "Nguyen Van A"
+2.  **Abbreviation (Viết tắt):** Lấy chữ cái đầu của các từ (hoặc giữ nguyên nếu ngắn).
+    *   "Li Xiao Long" -> "LXL" (hoặc "LL" tùy config).
+3.  **Sanitization:** Loại bỏ ký tự đặc biệt.
 
-**Bước 2 - Sanitization:** Loại bỏ toàn bộ ký tự đặc biệt (!@#$%^&*()), chỉ giữ lại chữ cái và số.
-- `User!@#` -> `User`
-- `꧁༺Gấu༻꧂` -> `Gau`
+### 3.2. Xử lý phần Suffix (Hậu tố) - "The Randomizer"
 
-**Bước 3 - Extraction:** Lấy chữ cái đầu của từ đầu tiên + chữ cái đầu của từ cuối cùng.
-- `Li Xiao Long` -> `LL`
-- `Gau` -> `G`
+Thay vì Hash ID (cũ), ta sinh một chuỗi ngẫu nhiên bằng **NanoID**.
 
-**Fallback:** Nếu tên toàn Emoji hoặc ký tự không thể dịch (😭😭😭), hệ thống mặc định tiền tố là `"USER"`.
-
-### 3.2. Xử lý phần Suffix (Hậu tố) - "The Shortener"
-
-Để đảm bảo tính duy nhất (Unique) mà vẫn ngắn gọn:
-
-- **Đầu vào:** TSID (Long - 18 chữ số).
-- **Xử lý:** Mã hóa Base62 (0-9, a-z, A-Z).
-- **Kết quả:** Chuỗi Hash ngắn (khoảng 10-11 ký tự).
+*   **Độ dài:** 8-12 ký tự (Tùy chỉnh độ khó).
+*   **Charset:** A-Z, a-z, 0-9.
+*   **Collision Check:** Kiểm tra trùng trong DB trước khi gán.
 
 ---
 
-## 4. Bảng mô phỏng dữ liệu (Data Simulation)
+## 4. Luồng xử lý (Implementation Flow)
 
-Dưới đây là kết quả thực tế khi áp dụng thuật toán:
+### 4.1. Khi lưu vào Database (Write)
+-   **Internal ID:** Lưu TSID (Primary Key).
+-   **Public ID:** Lưu phần Suffix NanoID (`Xy9z`) vào cột `public_id`.
+-   **Prefix:** Có thể không cần lưu (tính toán động) HOẶC lưu vào cột riêng `tag_prefix` để search nhanh hơn.
 
-| Input (Display Name) | Transliteration (IBM ICU) | Initials | Hash Suffix | FINAL PUBLIC TAG |
-|---------------------|---------------------------|----------|-------------|------------------|
-| John Marston | John Marston | JM | 7x9A | `JM#7x9A` |
-| Nguyễn Văn A | Nguyen Van A | NA | 7x9A | `NA#7x9A` |
-| 李小龙 (Trung) | Li Xiao Long | LL | 7x9A | `LL#7x9A` |
-| 甘米らくれ (Nhật) | Gan Mi rakure | GR | 7x9A | `GR#7x9A` |
-| User!!!123 | User123 | U3 | 7x9A | `U3#7x9A` |
-| 😭😭😭 | (Empty) | USER | 7x9A | `USER#7x9A` |
-
----
-
-## 5. Luồng xử lý API (Technical Implementation Flow)
-
-### 5.1. Khi lưu vào Database (Write)
-
-- Chỉ lưu **Internal ID (Long)** và **Display Name (String UTF-8)**.
-- **KHÔNG lưu Public Tag vào DB** để tiết kiệm dung lượng và tránh dư thừa dữ liệu (Redundancy). Tag là thuộc tính được tính toán động (Computed Property).
-
-### 5.2. Khi truy vấn (Read/Search)
-
-Khi Client gọi API `GET /api/v1/users/{userTag}` với input là `LL-7x9A` (hoặc `LL#7x9A`):
-
-1. **Parse:** Backend cắt chuỗi, lấy phần Hash sau ký tự cuối cùng (`7x9A`).
-2. **Decode:** Giải mã Base62 `7x9A` -> `4810293` (Internal ID gốc).
-3. **Query:** Gọi `userRepository.findById(4810293)`.
-   - **Ưu điểm:** Tốc độ truy vấn là O(1) nhờ tìm kiếm theo Primary Key. Không cần Full-text search, không sợ chậm khi DB lớn.
-4. **Response:** Trả về User Profile.
+### 4.2. Khi truy vấn (Search)
+User gõ tìm kiếm: `LL#Xy9z`
+1.  Hệ thống tách chuỗi lấy phần sau dấu `#` -> `Xy9z`.
+2.  Query: `SELECT * FROM users WHERE public_id = 'Xy9z'`.
+3.  (Optional) Kiểm tra xem Prefix có khớp với DisplayName hiện tại không (để redirect nếu user đổi tên hiển thị).
 
 ---
 
-## 6. Lợi ích (Business & Tech Value)
+## 5. Dependencies Required
 
-- **User Experience (UX):** Tôn trọng sự tự do của người dùng. Họ có thể đặt tên hiển thị tùy thích mà vẫn có một định danh "sạch", dễ nhớ, dễ gõ để chia sẻ.
-
-- **Global Access:** Giải quyết triệt để rào cản ngôn ngữ. Một người dùng Mỹ có thể dễ dàng add friend một người dùng Nhật Bản thông qua Public Tag Latin (`GR#...`) mà không cần cài bàn phím tiếng Nhật.
-
-- **Performance Optimization:** Hệ thống bề ngoài dùng String ID (Tag), nhưng bên dưới hoàn toàn chạy bằng ID số (Long). Tối ưu hóa tuyệt đối cho Indexing và Joins của PostgreSQL.
-
-- **URL SEO Friendly:** URL sạch sẽ, không chứa ký tự đặc biệt (`forum.com/u/LL-7x9A`).
-
----
-
-## 7. Dependencies Required
+Hệ thống cần cả 2 thư viện:
 
 ```xml
+<!-- 1. NanoID for Unique Suffix -->
+<dependency>
+    <groupId>com.aventrix.jnanoid</groupId>
+    <artifactId>jnanoid</artifactId>
+    <version>2.0.0</version>
+</dependency>
+
+<!-- 2. ICU4J for Prefix Latinization -->
 <dependency>
     <groupId>com.ibm.icu</groupId>
     <artifactId>icu4j</artifactId>
     <version>74.2</version>
 </dependency>
 
+<!-- 3. TSID Creator for Internal ID -->
 <dependency>
     <groupId>com.github.f4b6a3</groupId>
     <artifactId>tsid-creator</artifactId>
+    <version>5.2.6</version>
 </dependency>
 ```
 

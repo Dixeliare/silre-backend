@@ -9,10 +9,10 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.longdx</groupId>
-	<artifactId>forum-backend</artifactId>
+	<artifactId>social-media-backend</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>forum-backend</name>
-	<description>Backend forum</description>
+	<name>social-media-backend</name>
+	<description>Social Media Backend Platform</description>
 	<url/>
 	<licenses>
 		<license/>

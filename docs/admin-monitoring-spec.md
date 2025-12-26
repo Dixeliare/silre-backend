@@ -1,6 +1,6 @@
 # TECHNICAL SPECIFICATION: ADMIN & MONITORING SYSTEM
 
-**Project:** ThreadIt Forum Platform  
+**Project:** Social Media Backend  
 **Module:** Management & Observability  
 **Version:** 1.0  
 **Author:** LongDx  
@@ -23,8 +23,9 @@ Hệ thống Admin được tách biệt khỏi User Frontend để đảm bảo
     *   *Lý do:* Sử dụng Template có sẵn bảng biểu, form CRUD giúp tiết kiệm 80% thời gian phát triển UI.
 *   **Monitoring Stack:**
     *   **Spring Boot Actuator:** Expose metrics từ ứng dụng Java.
-    *   **Prometheus:** Thu thập dữ liệu metrics (Database dạng Time-series).
+    *   **Prometheus:** Thu thập dữ liệu metrics (Java & Python).
     *   **Grafana:** Hiển thị biểu đồ trực quan (Dashboard).
+    *   **Python Worker:** Sử dụng `prometheus_client` để expose metrics (Process time, Queue lag).
 
 ---
 

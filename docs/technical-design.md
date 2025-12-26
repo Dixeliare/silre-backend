@@ -1,18 +1,22 @@
-# PROJECT THREADIT - TECHNICAL DESIGN DOCUMENT
+# TECHNICAL DESIGN DOCUMENT (TDD)
 
-**Project Name:** ThreadIt (Social Forum Platform)  
-**Version:** 1.0.0  
-**Author:** LongDx  
+**Project:** Hybrid Social Platform (formerly ThreadIt)  
+**Version:** 3.0 (Final Draft: Hybrid Architecture)  
+**Status:** Approved
+LongDx  
 **Last Updated:** December 2025
 
-## 1. TỔNG QUAN (EXECUTIVE SUMMARY)
+## 1. TỔNG QUAN HỆ THỐNG (SYSTEM OVERVIEW)
 
-ThreadIt là một nền tảng mạng xã hội thảo luận (Discussion Platform) hiệu năng cao, kết hợp giữa cấu trúc thảo luận chiều sâu của Reddit và trải nghiệm Newsfeed thời gian thực của Threads/Twitter.
+### 1.1. Mục tiêu (Goal)
+Xây dựng Backend cho mạng xã hội hiện đại (Social Media), tập trung vào các cộng đồng (Communities) được phân loại linh hoạt bằng hệ thống Tags (giống Twitter/Manga).
+Hệ thống phải đảm bảo tính mở rộng (Scalability), chịu tải cao (High Concurrency) và trải nghiệm người dùng mượt mà.
 
-Hệ thống được thiết kế theo tiêu chuẩn Enterprise/Fintech, tập trung vào tính toàn vẹn dữ liệu (Data Consistency), khả năng mở rộng (Scalability) và bảo mật (Security).
-
-### Mục tiêu kỹ thuật (Technical Goals)
-*   **High Performance:** API response time < 50ms cho 95% request.
+### 1.2. Phạm vi (Scope)
+*   User Identity (Dual-Key: Internal TSID & Public NanoID)
+*   Community Management (Tag-Based Classification)
+*   Content Delivery (Gravity Feed Algorithm)
+*   Interaction (Smart Tagging & Notifications)
 *   **Global Accessibility:** Hỗ trợ định danh và tìm kiếm người dùng đa ngôn ngữ (bao gồm cả CJK - Trung/Nhật/Hàn).
 *   **Scalability:** Kiến trúc sẵn sàng mở rộng lên 1M+ users (Database Sharding & Caching ready).
 
@@ -26,37 +30,35 @@ Hệ thống sử dụng mô hình Monolithic Architecture (được module hóa
 
 | Hạng mục | Công nghệ | Phiên bản | Lý do lựa chọn |
 | :--- | :--- | :--- | :--- |
-| Backend | Java Spring Boot | 3.4.x / Java 21 LTS | Ổn định, hỗ trợ Virtual Threads (Project Loom) cho High Concurrency. |
-| Database | PostgreSQL | 16 | Xử lý quan hệ phức tạp, hỗ trợ JSONB và Recursive Query tốt nhất. |
-| Caching | Redis | 7 | Lưu trữ Hot Data, Session và tính toán Feed Ranking (ZSET). |
-| Migration | Flyway | Latest | Quản lý Version Database an toàn (Code First + Migration). |
-| Utility | NanoID + ICU4J | 2.0 / 74.2 | Hybrid: NanoID (Bảo mật) + ICU4J (Latin hóa tên hiển thị). |
-| Deployment | Docker | Latest | Đóng gói và triển khai đồng nhất. |
+| **Backend Core** | **Java Spring Boot** | 3.4.x | Modular Monolith, High Concurrency. |
+| **Worker (AI/Algo)** | **Python** | 3.11+ | Xử lý thuật toán "Gravity" và các tác vụ Data nặng. |
+| **Message Broker** | **Apache Kafka** | 3.x | Cầu nối bất đồng bộ giữa Java (User Actions) và Python (Processing). |
+| **Database** | PostgreSQL | 16 | Lưu trữ bền vững (Forum + Social Data). |
+| **Caching/Rank** | Redis (ZSET) | 7 | Lưu trữ BXH, Feed Pools (70-20-10 Rule). |
+| **Search Engine** | Meilisearch | 1.5 | Tìm kiếm tốc độ cao (<50ms). |
+| **Migration** | Flyway | Latest | Code First DB Migration. |
 
-> [!NOTE]
-> Để biết chi tiết về hệ thống quản trị (CMS) và giải pháp giám sát (Monitoring/Observability), vui lòng xem tại [admin-monitoring-spec.md](file:///Users/techmax/Documents/GitHub/forum-backend/docs/admin-monitoring-spec.md).
-
-### 2.2. High-Level Design Diagram
+### 2.2. High-Level Architecture Diagram
 
 ```mermaid
 graph TD
-    Client[Client (Next.js/Mobile)] -->|HTTPS| LB[Load Balancer / Nginx]
-    LB -->|REST API| API[Spring Boot Application]
+    User -->|REST API| JavaApp[Java Spring Boot Core]
     
-    subgraph "Application Layer"
-        API -->|Auth/Security| Security[Spring Security + JWT]
-        API -->|Data Access| Repo[JPA Repositories]
-        API -->|Ranking Logic| Service[Feed Service]
+    subgraph "Modular Monolith"
+        JavaApp -->|Module| ModForum[Forum Module]
+        JavaApp -->|Module| ModSocial[Social Module]
+        JavaApp -->|Module| ModFeed[Feed Module]
     end
 
-    subgraph "Data Layer"
-        Repo -->|Read/Write| DB[(PostgreSQL)]
-        Service -->|Cache/Score| Redis[(Redis)]
-    end
+    JavaApp -->|Async Events| Kafka{Apache Kafka}
+    Kafka -->|Consume Interactions| PyWorker[Python Worker]
     
-    subgraph "External Services"
-        Client -->|Upload Media| MediaHost[External Host (jpg.fish)]
-    end
+    PyWorker -->|Calculate Score| PyWorker
+    PyWorker -->|Update Rank| Redis[(Redis ZSET)]
+    
+    ModFeed -->|Get Top IDs| Redis
+    JavaApp -->|Persist Data| DB[(PostgreSQL)]
+    JavaApp -->|Sync Search| Meili[(Meilisearch)]
 ```
 
 ---
@@ -80,20 +82,38 @@ Sử dụng chiến lược Dual-Key Identification (Định danh kép) để t�
 *   **Cấu trúc:** Prefix (xử lý bởi ICU4J) giúp dễ đọc + Suffix (NanoID) đảm bảo duy nhất và bảo mật.
 *   **Lợi ích:** URL thân thiện, hỗ trợ tìm kiếm toàn cầu, đồng thời bảo vệ quyền riêng tư (Suffix ngẫu nhiên).
 
-### 3.2. Schema Chính (Key Entities)
+### 3.2. Schema & Modules Design
 
-*   **Users (users):**
-    *   id (PK, TSID): Khóa chính.
-    *   username (Unique): Tên đăng nhập hệ thống.
-    *   display_name: Tên hiển thị (UTF-8, trùng nhau thoải mái).
-    *   email: Unique.
-*   **Posts (posts):**
-    *   id (PK, TSID).
-    *   content: Chứa Markdown.
-    *   media_url: Chỉ lưu Link ảnh/video (không lưu file binary).
-    *   score: Điểm xếp hạng (Ranking Score).
-*   **Comments (comments):**
-    *   Sử dụng mô hình Adjacency List (parent_id) kết hợp với Recursive CTE của PostgreSQL để truy vấn cây bình luận đa cấp.
+Hệ thống chia làm 2 phân hệ dữ liệu:
+
+**A. Phân hệ Forum (Knowledge Base - 3 Layers):**
+*   `categories` (id, name): Danh mục lớn (VD: Công nghệ).
+*   `sub_forums` (id, category_id, name): Chủ đề cụ thể (VD: Java Backend).
+*   `forum_threads` (id, sub_forum_id, title, content, last_activity_at): Bài thảo luận sâu.
+
+**B. Phân hệ Social (Network - Unified):**
+*   `communities` (id, name, public_id): Nhóm sinh hoạt chung.
+*   `posts` (id, user_id, community_id, content, viral_score):
+    *   `community_id` is NULL -> **Personal Post**.
+    *   `community_id` NOT NULL -> **Community Post**.
+
+**C. Common Identity & Interaction:**
+*   `users` (id, public_id, email, ...).
+*   `saved_posts` (user_id, post_id, saved_at):
+    *   **PK (Composite):** `(user_id, post_id)` - Mỗi người chỉ lưu 1 bài 1 lần.
+    *   **Purpose:** Quản lý Bookmark và tính điểm trọng số cao (8 điểm).
+*   **`user_follows` (follower_id, target_id, created_at):**
+    *   **Type:** Internal TSID (BIGINT). *Luôn dùng ID nội bộ để join bảng cho nhanh.*
+    *   **PK (Composite):** `(follower_id, target_id)`.
+    *   **Logic:**
+        *   `follower_id`: Người đi theo dõi (User A).
+        *   `target_id`: Người được theo dõi (User B).
+    *   **Index:**
+        *   `idx_follower`: Lấy danh sách đang follow (để Build Feed).
+        *   `idx_target`: Lấy danh sách người theo dõi (để tính Count/Notify).
+
+> [!TIP]
+> Chi tiết chiến lược URL đẹp (Slug + Short ID) xem tại [url-identity-spec.md](file:///Users/techmax/Documents/GitHub/forum-backend/docs/url-identity-spec.md).
 
 ---
 
@@ -127,6 +147,50 @@ $$Score = \frac{(Votes - 1)}{(Time_{hours} + 2)^{1.8}}$$
 *   **Hiệu năng:** Giảm tải 90% việc sort DB cho PostgreSQL.
 
 ---
+
+### 4.3. Sensitive Content Control (NSFW System)
+
+Hệ thống hỗ trợ kiểm soát nội dung nhạy cảm (18+) cho Web Platform.
+
+*   **User Settings:** Cho phép User bật/tắt chế độ xem nội dung nhạy cảm.
+*   **Content Labeling:** Gắn cờ `is_nsfw` cho Cộng đồng và Bài viết.
+*   **View Logic:** Hiển thị mờ (Blur) và cảnh báo nếu User chưa bật setting.
+
+> [!TIP]
+> Xem chi tiết luồng xử lý và thiết kế DB tại [sensitive-content-control-spec.md](file:///Users/techmax/Documents/GitHub/forum-backend/docs/sensitive-content-control-spec.md).
+
+### 4.4. Tag-Based Classification System
+
+Thay thế cấu trúc Sub-forum cứng nhắc bằng hệ thống Tags linh hoạt.
+
+*   **System Tags:** Admin định nghĩa danh mục lớn (Technology, Funny, NSFW).
+*   **User Tags:** User tự tạo hashtag (#hanoi, #drama).
+*   **Contextual Search:** Tìm kiếm kết hợp (Tag bài viết + Tag cộng đồng).
+
+> [!TIP]
+> Chi tiết xem tại [tag-based-classification-spec.md](file:///Users/techmax/Documents/GitHub/forum-backend/docs/tag-based-classification-spec.md).
+
+### 4.5. High-Performance Search Engine
+
+Sử dụng **Meilisearch** để cung cấp khả năng tìm kiếm tức thì (<50ms).
+
+*   **Features:** Typo tolerance, Faceted Search (lọc theo Tag/NSFW), Sorting.
+*   **Sync Strategy:** Hybrid CQRS (Async sync từ PostgreSQL -> Meilisearch).
+*   **Search Scope:** Title, Content Preview, Tags, Author, Community.
+
+> [!TIP]
+> Xem chi tiết cấu hình Index và API tại [search-engine-spec.md](file:///Users/techmax/Documents/GitHub/forum-backend/docs/search-engine-spec.md).
+
+### 4.6. URL Identity System (SEO Friendly)
+
+Hệ thống sử dụng cơ chế **Slug + Short ID** để tạo URL thân thiện và bền vững.
+
+*   **Format:** `/c/{readable-slug}.{short-id}` (VD: `/c/yeu-meo.Xy9z`).
+*   **Logic:** Hệ thống query bằng Short ID (Unique), bỏ qua Slug.
+*   **Canonical:** Tự động Redirect 301 nếu Slug trên URL sai lệch so với Slug trong DB.
+
+> [!TIP]
+> Xem chi tiết thuật toán sinh Short ID và cấu hình Router tại [url-identity-spec.md](file:///Users/techmax/Documents/GitHub/forum-backend/docs/url-identity-spec.md).
 
 ## 5. BẢO MẬT (SECURITY & COMPLIANCE)
 

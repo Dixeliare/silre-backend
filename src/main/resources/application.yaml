@@ -1,6 +1,6 @@
 spring:
   application:
-    name: forum-backend
+    name: silre-backend
   
   datasource:
     driver-class-name: org.postgresql.Driver

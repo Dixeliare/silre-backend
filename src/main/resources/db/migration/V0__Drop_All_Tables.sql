@@ -30,3 +30,5 @@ DROP TYPE IF EXISTS follow_status CASCADE;
 DROP TYPE IF EXISTS join_request_status CASCADE;
 DROP TYPE IF EXISTS notification_type CASCADE;
 
+
+

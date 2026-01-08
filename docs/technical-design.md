@@ -70,7 +70,7 @@ graph TD
 Sử dụng chiến lược Dual-Key Identification (Định danh kép) để tối ưu hóa cả Hiệu năng máy và Trải nghiệm người dùng.
 
 > [!TIP]
-> Chi tiết triển khai hệ thống định danh thông minh (Hybrid: Latinized Prefix + NanoID Suffix) có thể xem tại [user-identity-spec.md](file:///Users/techmax/Documents/GitHub/forum-backend/docs/user-identity-spec.md).
+> Chi tiết triển khai hệ thống định danh thông minh (Hybrid: Latinized Prefix + NanoID Suffix) có thể xem tại [user-identity-spec.md](file:///Users/techmax/Documents/GitHub/silre-backend/docs/user-identity-spec.md).
 
 **Internal ID (Dùng cho Máy):**
 *   **Công nghệ:** TSID (Time-Sorted Unique Identifier).
@@ -78,7 +78,7 @@ Sử dụng chiến lược Dual-Key Identification (Định danh kép) để t�
 *   **Lợi ích:** Tương thích hoàn hảo với B-Tree Index của PostgreSQL, không gây phân mảnh trang (Page Splitting) như UUID, sắp xếp được theo thời gian.
 
 > [!TIP]
-> Chi tiết giải pháp kỹ thuật sinh Distributed ID và Redis Auto-Discovery xem tại [tsid-generation-spec.md](file:///Users/techmax/Documents/GitHub/forum-backend/docs/tsid-generation-spec.md).
+> Chi tiết giải pháp kỹ thuật sinh Distributed ID và Redis Auto-Discovery xem tại [tsid-generation-spec.md](file:///Users/techmax/Documents/GitHub/silre-backend/docs/tsid-generation-spec.md).
 
 **Public ID (Dùng cho Người):**
 *   **User Tag:** `LatinizedName` + `#` + `NanoID`. (Ví dụ: `LL#Xy9z` cho user "李小龙").
@@ -116,7 +116,7 @@ Hệ thống chia làm 2 phân hệ dữ liệu:
         *   `idx_target`: Lấy danh sách người theo dõi (để tính Count/Notify).
 
 > [!TIP]
-> Chi tiết chiến lược URL đẹp (Slug + Short ID) xem tại [url-identity-spec.md](file:///Users/techmax/Documents/GitHub/forum-backend/docs/url-identity-spec.md).
+> Chi tiết chiến lược URL đẹp (Slug + Short ID) xem tại [url-identity-spec.md](file:///Users/techmax/Documents/GitHub/silre-backend/docs/url-identity-spec.md).
 
 ---
 
@@ -142,7 +142,7 @@ Sử dụng công thức Gravity Decay (tương tự HackerNews) để tạo New
 $$Score = \frac{(Votes - 1)}{(Time_{hours} + 2)^{1.8}}$$
 
 > [!IMPORTANT]
-> Phiên bản nâng cấp **Heart-Based Ranking** (Thả tim thay cho Vote) và các tín hiệu tương tác nâng cao được mô tả chi tiết tại [ranking-algorithm-spec.md](file:///Users/techmax/Documents/GitHub/forum-backend/docs/ranking-algorithm-spec.md).
+> Phiên bản nâng cấp **Heart-Based Ranking** (Thả tim thay cho Vote) và các tín hiệu tương tác nâng cao được mô tả chi tiết tại [ranking-algorithm-spec.md](file:///Users/techmax/Documents/GitHub/silre-backend/docs/ranking-algorithm-spec.md).
 
 *   **Cơ chế:**
     *   Khi có Vote mới -> Tính lại Score -> Cập nhật vào Redis Sorted Set (ZSET).
@@ -160,7 +160,7 @@ Hệ thống hỗ trợ kiểm soát nội dung nhạy cảm (18+) cho Web Platf
 *   **View Logic:** Hiển thị mờ (Blur) và cảnh báo nếu User chưa bật setting.
 
 > [!TIP]
-> Xem chi tiết luồng xử lý và thiết kế DB tại [sensitive-content-control-spec.md](file:///Users/techmax/Documents/GitHub/forum-backend/docs/sensitive-content-control-spec.md).
+> Xem chi tiết luồng xử lý và thiết kế DB tại [sensitive-content-control-spec.md](file:///Users/techmax/Documents/GitHub/silre-backend/docs/sensitive-content-control-spec.md).
 
 ### 4.4. Tag-Based Classification System
 
@@ -171,7 +171,7 @@ Thay thế cấu trúc Sub-forum cứng nhắc bằng hệ thống Tags linh ho�
 *   **Contextual Search:** Tìm kiếm kết hợp (Tag bài viết + Tag cộng đồng).
 
 > [!TIP]
-> Chi tiết xem tại [tag-based-classification-spec.md](file:///Users/techmax/Documents/GitHub/forum-backend/docs/tag-based-classification-spec.md).
+> Chi tiết xem tại [tag-based-classification-spec.md](file:///Users/techmax/Documents/GitHub/silre-backend/docs/tag-based-classification-spec.md).
 
 ### 4.5. High-Performance Search Engine
 
@@ -182,7 +182,7 @@ Sử dụng **Meilisearch** để cung cấp khả năng tìm kiếm tức thì 
 *   **Search Scope:** Title, Content Preview, Tags, Author, Community.
 
 > [!TIP]
-> Xem chi tiết cấu hình Index và API tại [search-engine-spec.md](file:///Users/techmax/Documents/GitHub/forum-backend/docs/search-engine-spec.md).
+> Xem chi tiết cấu hình Index và API tại [search-engine-spec.md](file:///Users/techmax/Documents/GitHub/silre-backend/docs/search-engine-spec.md).
 
 ### 4.6. URL Identity System (SEO Friendly)
 
@@ -193,7 +193,7 @@ Hệ thống sử dụng cơ chế **Slug + Short ID** để tạo URL thân thi
 *   **Canonical:** Tự động Redirect 301 nếu Slug trên URL sai lệch so với Slug trong DB.
 
 > [!TIP]
-> Xem chi tiết thuật toán sinh Short ID và cấu hình Router tại [url-identity-spec.md](file:///Users/techmax/Documents/GitHub/forum-backend/docs/url-identity-spec.md).
+> Xem chi tiết thuật toán sinh Short ID và cấu hình Router tại [url-identity-spec.md](file:///Users/techmax/Documents/GitHub/silre-backend/docs/url-identity-spec.md).
 
 ## 5. BẢO MẬT (SECURITY & COMPLIANCE)
 

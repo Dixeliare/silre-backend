@@ -1,7 +1,7 @@
 # Read Me First
 The following was discovered as part of building this project:
 
-* The original package name 'com.longdx.forum-backend' is invalid and this project uses 'com.longdx.forum_backend' instead.
+* The original package name 'com.longdx.silre-backend' is invalid and this project uses 'com.longdx.forum_backend' instead.
 
 # Getting Started
 

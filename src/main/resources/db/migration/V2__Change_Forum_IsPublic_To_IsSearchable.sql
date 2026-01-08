@@ -28,3 +28,5 @@ CREATE INDEX idx_forums_is_searchable ON forums(is_searchable) WHERE is_searchab
 
 COMMENT ON COLUMN forums.is_searchable IS 'Có thể search (discoverable). Replaces old is_public column';
 
+
+

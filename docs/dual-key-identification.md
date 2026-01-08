@@ -16,7 +16,7 @@ Trong quá trình thiết kế hệ thống định danh người dùng (User Id
 -   **Độc nhất & Bảo mật:** Cần một mã định danh duy nhất, không đoán được (Unpredictable) và có thể thay đổi (Re-rollable) khi cần.
 
 > [!NOTE]
-> Chi tiết triển khai code và thiết kế DB được mô tả tại [user-identity-spec.md](file:///Users/techmax/Documents/GitHub/forum-backend/docs/user-identity-spec.md).
+> Chi tiết triển khai code và thiết kế DB được mô tả tại [user-identity-spec.md](file:///Users/techmax/Documents/GitHub/silre-backend/docs/user-identity-spec.md).
 
 ---
 

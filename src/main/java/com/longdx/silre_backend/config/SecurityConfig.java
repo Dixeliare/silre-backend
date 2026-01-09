@@ -38,7 +38,18 @@ public class SecurityConfig {
         http
             .csrf(csrf -> csrf.disable()) // Disable CSRF for API (will use JWT)
             .authorizeHttpRequests(auth -> auth
-                .anyRequest().permitAll() // Allow all requests for now
+                // Swagger UI endpoints - allow public access
+                .requestMatchers(
+                    "/swagger-ui/**",
+                    "/swagger-ui.html",
+                    "/v3/api-docs/**",
+                    "/swagger-resources/**",
+                    "/webjars/**"
+                ).permitAll()
+                // Actuator endpoints - allow public access for now
+                .requestMatchers("/actuator/**").permitAll()
+                // Allow all requests for now - will be configured with JWT later
+                .anyRequest().permitAll()
             );
         
         return http.build();

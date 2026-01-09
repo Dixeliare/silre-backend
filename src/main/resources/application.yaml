@@ -2,11 +2,28 @@ spring:
   application:
     name: silre-backend
   
+  # Database Configuration
+  # ⚠️ Production: Use environment variables or external config
+  # Example: ${DB_URL:jdbc:postgresql://localhost:5432/silre_backend}
   datasource:
     driver-class-name: org.postgresql.Driver
-    url: jdbc:postgresql://localhost:5432/silre_backend
-    username: postgres
-    password: 041203
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/silre_backend}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:041203}
+  
+  # Redis Configuration (Default - can be overridden by profiles)
+  # Enterprise: Use Redis Cluster/Sentinel for High Availability
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}  # Empty by default, set via env var
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
   
   jpa:
     hibernate:
@@ -23,3 +40,31 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
     validate-on-migrate: true
+
+# TSID Configuration (Enterprise-Grade)
+# tsid.allow-dev-mode: false  # Set to true ONLY for local development without Redis
+#                              # WARNING: NOT recommended for production - causes ID collisions in multi-instance deployments
+
+# Spring Boot Actuator Configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info  # Expose health endpoint for TSID monitoring
+  endpoint:
+    health:
+      show-details: when-authorized  # Show details for authorized users
+
+# SpringDoc OpenAPI (Swagger) Configuration
+# Swagger UI KHÔNG tự mở trình duyệt; chỉ lắng trên endpoint.
+# Đây phù hợp với triết lý Spring Boot: ứng dụng backend không chủ động điều khiển UI máy người dùng.
+springdoc:
+  api-docs:
+    path: /v3/api-docs  # JSON/YAML API docs endpoint
+  swagger-ui:
+    path: /swagger-ui.html  # Swagger UI endpoint
+    enabled: true
+    try-it-out-enabled: true  # Enable "Try it out" feature
+    operations-sorter: method  # Sort operations by HTTP method
+    tags-sorter: alpha  # Sort tags alphabetically
+  show-actuator: true  # Show Actuator endpoints in Swagger

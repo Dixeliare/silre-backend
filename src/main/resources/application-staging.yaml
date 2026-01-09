@@ -1,0 +1,24 @@
+# Staging Profile Configuration
+# Usage: java -jar app.jar --spring.profiles.active=staging
+# Staging environment - mirrors production but with more debugging
+
+spring:
+  data:
+    redis:
+      host: ${REDIS_HOST:redis.staging.internal}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD}
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 4
+
+tsid:
+  allow-dev-mode: false  # Same as production
+
+logging:
+  level:
+    root: INFO
+    com.longdx.silre_backend: DEBUG  # More verbose than prod

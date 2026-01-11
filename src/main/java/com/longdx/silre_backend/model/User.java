@@ -10,6 +10,8 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import com.longdx.silre_backend.config.TimezoneContext;
 
 @Entity
 @Table(name = "users")
@@ -99,12 +101,46 @@ public class User {
 
     @PrePersist
     protected void onCreate() {
-        createdAt = OffsetDateTime.now();
+        // Use detected timezone from request, or user's stored timezone, or UTC
+        ZoneId zoneId = getEffectiveTimezone();
+        createdAt = OffsetDateTime.now(zoneId);
     }
 
     @PreUpdate
     protected void onUpdate() {
-        updatedAt = OffsetDateTime.now();
+        // Use detected timezone from request, or user's stored timezone, or UTC
+        ZoneId zoneId = getEffectiveTimezone();
+        updatedAt = OffsetDateTime.now(zoneId);
+    }
+    
+    /**
+     * Gets the effective timezone for this user.
+     * Priority:
+     * 1. Timezone from request context (X-Timezone header)
+     * 2. User's stored timezone preference
+     * 3. Default: UTC
+     * 
+     * @return ZoneId to use for timestamp creation
+     */
+    private ZoneId getEffectiveTimezone() {
+        // Priority 1: Check if timezone was detected from request header
+        ZoneId contextTimezone = TimezoneContext.getCurrentTimezone();
+        if (contextTimezone != null && !contextTimezone.equals(ZoneId.of("UTC"))) {
+            return contextTimezone;
+        }
+        
+        // Priority 2: Use user's stored timezone preference
+        if (timezone != null && !timezone.trim().isEmpty() && !timezone.equals("UTC")) {
+            try {
+                return ZoneId.of(timezone);
+            } catch (Exception e) {
+                // Invalid timezone stored - fallback to UTC
+                return ZoneId.of("UTC");
+            }
+        }
+        
+        // Priority 3: Default to UTC
+        return ZoneId.of("UTC");
     }
 }
 

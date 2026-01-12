@@ -12,6 +12,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
+import java.net.InetAddress;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -85,6 +86,29 @@ import java.util.concurrent.atomic.AtomicReference;
 @Configuration // Marks this as a Spring configuration class
 @EnableScheduling // Enables @Scheduled annotation support for lock refresh
 public class TsidConfig {
+    
+    /**
+     * Generates unique instance ID for lock ownership verification.
+     * 
+     * This ID is used to verify lock ownership in Redis:
+     * - Stored in Redis value when acquiring lock
+     * - Verified during refresh to detect lock theft
+     * 
+     * @return Unique instance identifier
+     */
+    private static String generateInstanceId() {
+        try {
+            String hostname = InetAddress.getLocalHost().getHostName();
+            long pid = ProcessHandle.current().pid();
+            long timestamp = System.currentTimeMillis();
+            return String.format("instance:%s:%d:%d", hostname, pid, timestamp);
+        } catch (Exception e) {
+            // Fallback if hostname resolution fails
+            long pid = ProcessHandle.current().pid();
+            long timestamp = System.currentTimeMillis();
+            return String.format("instance:unknown:%d:%d", pid, timestamp);
+        }
+    }
 
     // ===============================================================================
     // FIELDS & CONSTANTS
@@ -141,6 +165,17 @@ public class TsidConfig {
      * Example value: "sys:tsid:node:0"
      */
     private final AtomicReference<String> allocatedNodeKey = new AtomicReference<>();
+    
+    /**
+     * Instance ID to verify lock ownership.
+     * 
+     * This is stored in Redis value to prevent lock theft:
+     * - If another instance tries to refresh our lock, it will fail (value mismatch)
+     * - If our lock is deleted and re-acquired by another instance, we can detect it
+     * 
+     * Format: "instance:{hostname}:{pid}:{timestamp}"
+     */
+    private final String instanceId = generateInstanceId();
 
     // ===============================================================================
     // MAIN BEAN - TsidFactory
@@ -369,7 +404,7 @@ public class TsidConfig {
                 //
                 // Parameters:
                 // key = "sys:tsid:node:0"
-                // value = "LOCKED" (could be any string, just marks as taken)
+                // value = instanceId (to verify ownership during refresh)
                 // timeout = 24 hours (TTL - auto-expires if app crashes)
                 //
                 // Returns:
@@ -378,8 +413,13 @@ public class TsidConfig {
                 //
                 // ATOMIC: Even if 2 instances call this at same time,
                 // only ONE will get TRUE (Redis guarantees this)
+                //
+                // OWNERSHIP VERIFICATION:
+                // - Store instanceId in value to verify lock ownership
+                // - During refresh, verify value matches our instanceId
+                // - If value doesn't match → Another instance stole our lock → Fail-fast
                 Boolean acquired = redisTemplate.opsForValue()
-                        .setIfAbsent(key, "LOCKED", Duration.ofHours(24));
+                        .setIfAbsent(key, instanceId, Duration.ofHours(24));
 
                 if (Boolean.TRUE.equals(acquired)) {
                     // -------------------------------------------------------------------------------
@@ -489,21 +529,94 @@ public class TsidConfig {
 
         try {
             // -------------------------------------------------------------------------------
-            // Extend TTL back to 24 hours
+            // STEP 1: Verify lock ownership (CRITICAL for fail-fast)
             // -------------------------------------------------------------------------------
-            // Redis EXPIRE command: reset TTL without changing value
+            // Check if key exists and value matches our instanceId
+            String currentValue = redisTemplate.opsForValue().get(key);
+            
+            if (currentValue == null) {
+                // -------------------------------------------------------------------------------
+                // LOCK LOST: Key doesn't exist anymore
+                // -------------------------------------------------------------------------------
+                // This means:
+                // - Redis was restarted and key was lost
+                // - Key expired (shouldn't happen if refresh works)
+                // - Key was manually deleted
+                // - Another instance might have acquired this Node ID
+                //
+                // FAIL-FAST: Stop generating TSIDs to prevent ID collisions
+                String errorMsg = String.format(
+                        "CRITICAL: TSID Node ID lock lost! Key '%s' no longer exists in Redis. " +
+                        "Another instance may have acquired Node ID %d. " +
+                        "TSID generation is DISABLED to prevent ID collisions. " +
+                        "Application must be restarted to re-acquire Node ID.",
+                        key, extractNodeIdFromKey(key));
+                
+                logger.error(errorMsg);
+                throw new IllegalStateException(errorMsg);
+            }
+            
+            if (!currentValue.equals(instanceId)) {
+                // -------------------------------------------------------------------------------
+                // LOCK STOLEN: Another instance acquired our Node ID
+                // -------------------------------------------------------------------------------
+                // This means:
+                // - Redis was restarted, our lock was lost
+                // - Another instance started and acquired the same Node ID
+                // - We're still running with old Node ID in memory
+                // - ID COLLISIONS WILL OCCUR!
+                //
+                // FAIL-FAST: Stop generating TSIDs immediately
+                String errorMsg = String.format(
+                        "CRITICAL: TSID Node ID lock stolen! Key '%s' is owned by instance '%s', " +
+                        "but we are instance '%s'. Another instance has acquired Node ID %d. " +
+                        "TSID generation is DISABLED to prevent ID collisions. " +
+                        "Application must be restarted to acquire a different Node ID.",
+                        key, currentValue, instanceId, extractNodeIdFromKey(key));
+                
+                logger.error(errorMsg);
+                throw new IllegalStateException(errorMsg);
+            }
+            
+            // -------------------------------------------------------------------------------
+            // STEP 2: Lock ownership verified - refresh TTL
+            // -------------------------------------------------------------------------------
+            // Our lock is valid, extend TTL back to 24 hours
             redisTemplate.expire(key, Duration.ofHours(24));
-            logger.debug("Refreshed TSID node lock: {}", key);
+            logger.debug("Refreshed TSID node lock: {} (instance: {})", key, instanceId);
 
+        } catch (IllegalStateException e) {
+            // -------------------------------------------------------------------------------
+            // FAIL-FAST: Re-throw IllegalStateException to crash the application
+            // -------------------------------------------------------------------------------
+            // This ensures we don't continue generating TSIDs with a stolen Node ID
+            throw e;
         } catch (Exception e) {
             // -------------------------------------------------------------------------------
-            // Refresh failed - log error but don't crash
+            // Other errors (network, Redis down, etc.)
             // -------------------------------------------------------------------------------
-            // Lock still has remaining TTL, but if this keeps failing,
-            // the lock will eventually expire.
+            // Log error but don't crash immediately
+            // If Redis is temporarily down, we'll retry in 12 hours
+            // If this keeps failing, lock will expire and we'll detect it next refresh
             logger.error("Failed to refresh TSID node lock: {}. " +
-                    "Lock will expire in 24 hours. Application should restart to re-acquire lock.",
+                    "Lock will expire in 24 hours. If Redis is down, this is expected. " +
+                    "If Redis is up and this persists, application should restart.",
                     key, e);
+        }
+    }
+    
+    /**
+     * Extracts Node ID from Redis key.
+     * 
+     * @param key Redis key (e.g., "sys:tsid:node:0")
+     * @return Node ID (e.g., 0)
+     */
+    private int extractNodeIdFromKey(String key) {
+        try {
+            String nodeIdStr = key.substring(NODE_KEY_PREFIX.length());
+            return Integer.parseInt(nodeIdStr);
+        } catch (Exception e) {
+            return -1; // Invalid key format
         }
     }
 

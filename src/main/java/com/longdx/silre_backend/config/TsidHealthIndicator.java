@@ -3,10 +3,15 @@ package com.longdx.silre_backend.config;
 import com.github.f4b6a3.tsid.TsidFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.health.contributor.HealthIndicator;
 import org.springframework.boot.health.contributor.Health;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.HashMap;
@@ -87,6 +92,18 @@ public class TsidHealthIndicator implements HealthIndicator {
     private final TsidFactory tsidFactory;
 
     /**
+     * DataSource for database health check.
+     */
+    @Autowired(required = false)
+    private DataSource dataSource;
+
+    /**
+     * Redis template for Redis health check.
+     */
+    @Autowired(required = false)
+    private StringRedisTemplate redisTemplate;
+
+    /**
      * The allocated Node ID (set by TsidConfig after allocation).
      * 
      * Static field to avoid circular dependency with TsidConfig.
@@ -130,20 +147,31 @@ public class TsidHealthIndicator implements HealthIndicator {
     // ===============================================================================
 
     /**
-     * Performs the TSID system health check.
+     * Performs comprehensive health check for TSID system, Database, and Redis.
      * 
      * Called by Spring Actuator when accessing /actuator/health endpoint.
      * 
      * -------------------------------------------------------------------------------
-     * CHECKS PERFORMED
+     * TSID HEALTH CHECKS
      * -------------------------------------------------------------------------------
-     * 1. Verify TsidFactory is initialized
-     * 2. Test TSID generation (actually create one)
-     * 3. Check clock synchronization (compare system time vs TSID time)
-     * 4. Verify Node ID is properly allocated
-     * 5. Return UP with details, or DOWN with error
+     * 1. Verify TsidFactory is initialized (Node ID đã được allocate chưa?)
+     * 2. Test TSID generation (Factory có generate TSID được không?)
+     * 3. Check clock synchronization (System clock có sync không? NTP configured?)
+     * 4. Verify Node ID is properly allocated (Node ID có trong range 0-1023 không?)
      * 
-     * @return Health status with details about TSID system
+     * -------------------------------------------------------------------------------
+     * DATABASE HEALTH CHECK
+     * -------------------------------------------------------------------------------
+     * - Test database connection (có connect được không?)
+     * - Verify connection is valid (connection có hoạt động không?)
+     * 
+     * -------------------------------------------------------------------------------
+     * REDIS HEALTH CHECK
+     * -------------------------------------------------------------------------------
+     * - Test Redis connection (có connect được không?)
+     * - Verify Redis is responsive (Redis có respond không?)
+     * 
+     * @return Health status with details about TSID, Database, and Redis
      */
     @Override
     public Health health() {
@@ -177,15 +205,68 @@ public class TsidHealthIndicator implements HealthIndicator {
             long timeDiff = Math.abs(currentTime - tsidTime);
 
             // -------------------------------------------------------------------------------
+            // CHECK 4: Database connection health
+            // -------------------------------------------------------------------------------
+            Map<String, Object> dbDetails = new HashMap<>();
+            boolean dbHealthy = false;
+            if (dataSource != null) {
+                try (Connection connection = dataSource.getConnection()) {
+                    if (connection.isValid(2)) { // 2 seconds timeout
+                        dbHealthy = true;
+                        dbDetails.put("status", "Connected");
+                        dbDetails.put("database", connection.getMetaData().getDatabaseProductName());
+                        dbDetails.put("version", connection.getMetaData().getDatabaseProductVersion());
+                    } else {
+                        dbDetails.put("status", "Connection invalid");
+                        dbDetails.put("error", "Connection validation failed");
+                    }
+                } catch (SQLException e) {
+                    dbDetails.put("status", "Connection failed");
+                    dbDetails.put("error", e.getMessage());
+                }
+            } else {
+                dbDetails.put("status", "DataSource not configured");
+            }
+
+            // -------------------------------------------------------------------------------
+            // CHECK 5: Redis connection health
+            // -------------------------------------------------------------------------------
+            Map<String, Object> redisDetails = new HashMap<>();
+            boolean redisHealthy = false;
+            if (redisTemplate != null) {
+                try {
+                    // Test Redis connection by doing a simple operation
+                    String testKey = "health:check:" + System.currentTimeMillis();
+                    redisTemplate.opsForValue().set(testKey, "test", java.time.Duration.ofSeconds(1));
+                    redisTemplate.delete(testKey);
+                    redisHealthy = true;
+                    redisDetails.put("status", "Connected");
+                    redisDetails.put("host", redisTemplate.getConnectionFactory().getConnection().getNativeConnection().toString().contains("localhost") ? "localhost" : "remote");
+                } catch (Exception e) {
+                    redisDetails.put("status", "Connection failed");
+                    redisDetails.put("error", e.getMessage());
+                }
+            } else {
+                redisDetails.put("status", "Redis not configured");
+            }
+
+            // -------------------------------------------------------------------------------
             // BUILD HEALTH DETAILS
             // -------------------------------------------------------------------------------
             Map<String, Object> details = new HashMap<>();
-            details.put("status", "TSID system operational");
-            details.put("nodeId", allocatedNodeId.get() >= 0 ? allocatedNodeId.get() : "unknown");
-            details.put("testTsid", tsidValue);
-            details.put("timestamp", OffsetDateTime.now(ZoneOffset.UTC).toString());
-            details.put("maxNodeId", 1023);
-            details.put("nodeCapacity", "1024 instances");
+            
+            // TSID details
+            Map<String, Object> tsidDetails = new HashMap<>();
+            tsidDetails.put("status", "TSID system operational");
+            tsidDetails.put("nodeId", allocatedNodeId.get() >= 0 ? allocatedNodeId.get() : "unknown");
+            tsidDetails.put("testTsid", tsidValue);
+            tsidDetails.put("timestamp", OffsetDateTime.now(ZoneOffset.UTC).toString());
+            tsidDetails.put("maxNodeId", 1023);
+            tsidDetails.put("nodeCapacity", "1024 instances");
+            
+            details.put("tsid", tsidDetails);
+            details.put("database", dbDetails);
+            details.put("redis", redisDetails);
 
             // -------------------------------------------------------------------------------
             // WARNING: Clock drift detected (> 1 second difference)
@@ -199,7 +280,7 @@ public class TsidHealthIndicator implements HealthIndicator {
                         "Clock synchronization issue detected. Time difference: %d ms. " +
                                 "Ensure NTP is configured correctly. TSID uniqueness may be compromised.",
                         timeDiff);
-                details.put("warning", warning);
+                tsidDetails.put("warning", warning);
                 logger.warn("TSID Health Check: Clock synchronization warning - {} ms difference", timeDiff);
             }
 
@@ -210,7 +291,17 @@ public class TsidHealthIndicator implements HealthIndicator {
             // - Dev mode (random Node ID)
             // - TsidConfig didn't call setAllocatedNodeId()
             if (allocatedNodeId.get() < 0) {
-                details.put("warning", "Node ID not properly allocated. TSID uniqueness may be compromised.");
+                tsidDetails.put("warning", "Node ID not properly allocated. TSID uniqueness may be compromised.");
+            }
+
+            // -------------------------------------------------------------------------------
+            // Determine overall health status
+            // -------------------------------------------------------------------------------
+            // DOWN if any critical component is down
+            boolean allHealthy = dbHealthy && redisHealthy && tsidFactory != null;
+            
+            if (!allHealthy) {
+                return Health.down().withDetails(details).build();
             }
 
             // -------------------------------------------------------------------------------

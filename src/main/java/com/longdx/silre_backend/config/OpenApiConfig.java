@@ -5,6 +5,7 @@ import io.swagger.v3.oas.models.info.Contact;
 import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.info.License;
 import io.swagger.v3.oas.models.servers.Server;
+import org.springdoc.core.models.GroupedOpenApi;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -20,6 +21,9 @@ import java.util.List;
  * 
  * API Docs (JSON/YAML):
  * - http://localhost:8080/v3/api-docs
+ * 
+ * Note: Excludes exception handlers from SpringDoc scanning to fix compatibility
+ * with Spring Boot 4.0.1
  */
 @Configuration
 public class OpenApiConfig {
@@ -64,5 +68,21 @@ public class OpenApiConfig {
                                 .url("https://api.silre.com")
                                 .description("Production Server")
                 ));
+    }
+
+    /**
+     * Configure SpringDoc to exclude exception handlers from API documentation
+     * 
+     * This fixes compatibility issue with Spring Boot 4.0.1 where SpringDoc
+     * tries to scan @RestControllerAdvice classes and fails due to API changes
+     * in Spring Framework 7.0.2
+     */
+    @Bean
+    public GroupedOpenApi publicApi() {
+        return GroupedOpenApi.builder()
+                .group("public-api")
+                .pathsToMatch("/api/**")
+                .packagesToExclude("com.longdx.silre_backend.exception")
+                .build();
     }
 }

@@ -2,11 +2,14 @@ package com.longdx.silre_backend.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -19,16 +22,32 @@ import java.util.List;
  * 
  * Pattern:
  * - Provides PasswordEncoder bean for password hashing
- * - Configures HTTP security (currently allows all requests)
- * - TODO: Add JWT authentication, CORS, rate limiting
+ * - Configures HTTP security with JWT authentication
+ * - Stateless session management (JWT-based)
+ * - CORS configuration for frontend integration
+ * 
+ * Security Best Practices:
+ * - Stateless authentication (no server-side sessions)
+ * - JWT tokens for authentication
+ * - Public endpoints for auth and Swagger
+ * - Protected endpoints require valid JWT token
  */
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity(prePostEnabled = true) // Enable method-level security annotations
 public class SecurityConfig {
+
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
+        this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+    }
 
     /**
      * Password encoder bean using BCrypt
      * Used for hashing passwords before storing in database
+     * 
+     * BCrypt strength: 10 (default) - good balance between security and performance
      */
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -73,27 +92,49 @@ public class SecurityConfig {
 
     /**
      * Security filter chain configuration
-     * Currently allows all requests - will be configured with JWT later
+     * 
+     * Configures:
+     * - Stateless session management (JWT-based)
+     * - JWT authentication filter
+     * - Public endpoints (auth, Swagger, Actuator)
+     * - Protected endpoints (require valid JWT token)
      */
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-            .csrf(csrf -> csrf.disable()) // Disable CSRF for API (will use JWT)
-            .cors(cors -> cors.configurationSource(corsConfigurationSource())) // Enable CORS
+            // Disable CSRF for stateless JWT-based API
+            .csrf(csrf -> csrf.disable())
+            
+            // Enable CORS
+            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+            
+            // Stateless session management (no server-side sessions)
+            .sessionManagement(session -> session
+                .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+            )
+            
+            // Configure authorization
             .authorizeHttpRequests(auth -> auth
-                // Swagger UI endpoints - allow public access
+                // Public endpoints - no authentication required
                 .requestMatchers(
+                    // Authentication endpoints
+                    "/api/v1/auth/**",
+                    // Swagger UI endpoints
                     "/swagger-ui/**",
                     "/swagger-ui.html",
                     "/v3/api-docs/**",
                     "/swagger-resources/**",
-                    "/webjars/**"
+                    "/webjars/**",
+                    // Actuator endpoints (health checks)
+                    "/actuator/**"
                 ).permitAll()
-                // Actuator endpoints - allow public access for now
-                .requestMatchers("/actuator/**").permitAll()
-                // Allow all requests for now - will be configured with JWT later
-                .anyRequest().permitAll()
-            );
+                
+                // All other endpoints require authentication
+                .anyRequest().authenticated()
+            )
+            
+            // Add JWT authentication filter before UsernamePasswordAuthenticationFilter
+            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         
         return http.build();
     }

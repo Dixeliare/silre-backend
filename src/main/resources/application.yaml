@@ -4,19 +4,19 @@ spring:
   
   # Database Configuration
   # ⚠️ Production: Use environment variables or external config
-  # Example: ${DB_URL:jdbc:postgresql://localhost:5432/silre_backend}
+  # Format: ${ENV_VAR:default_value} - Uses env var if available, otherwise uses default
   datasource:
     driver-class-name: org.postgresql.Driver
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/silre_backend}
-    username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:041203}
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
   
   # Redis Configuration (Default - can be overridden by profiles)
   # Enterprise: Use Redis Cluster/Sentinel for High Availability
   data:
     redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
       password: ${REDIS_PASSWORD:}  # Empty by default, set via env var
       timeout: 2000ms
       lettuce:
@@ -68,3 +68,13 @@ springdoc:
     operations-sorter: method  # Sort operations by HTTP method
     tags-sorter: alpha  # Sort tags alphabetically
   show-actuator: true  # Show Actuator endpoints in Swagger
+  packages-to-exclude: com.longdx.silre_backend.exception  # Exclude exception handlers from SpringDoc scanning (fixes compatibility issue with Spring Boot 4.0.1)
+
+# JWT Configuration
+# ⚠️ Production: Use environment variables or secret management service
+# Minimum secret length: 32 characters (256 bits) for HS256 algorithm
+jwt:
+  secret: ${JWT_SECRET}
+  issuer: ${JWT_ISSUER}
+  access-token-expiration: ${JWT_ACCESS_TOKEN_EXPIRATION:900000}  # 15 minutes (milliseconds)
+  refresh-token-expiration: ${JWT_REFRESH_TOKEN_EXPIRATION:604800000}  # 7 days (milliseconds)

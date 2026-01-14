@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -48,6 +49,28 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     // Find posts by topic with pagination
     @Query("SELECT p FROM Post p WHERE p.topic.id = :topicId ORDER BY p.createdAt DESC")
     Page<Post> findPostsByTopic(@Param("topicId") Long topicId, Pageable pageable);
+
+    // Find feed posts: posts from followed users, joined communities, followed topics, and own posts
+    // This is the main feed query that filters posts based on user's follows/joins
+    // Note: Empty lists are passed as List.of(-1L) from service layer to avoid JPA IN clause issues
+    @Query("SELECT DISTINCT p FROM Post p " +
+           "WHERE (" +
+           "  (p.author.internalId IN :followedUserIds AND NOT (p.author.internalId = -1)) OR " +
+           "  (p.community.id IN :joinedCommunityIds AND NOT (p.community.id = -1)) OR " +
+           "  (p.topic.id IN :followedTopicIds AND NOT (p.topic.id = -1)) OR " +
+           "  p.author.internalId = :currentUserId" +
+           ") " +
+           "ORDER BY p.createdAt DESC")
+    Page<Post> findFeedPosts(
+            @Param("followedUserIds") List<Long> followedUserIds,
+            @Param("joinedCommunityIds") List<Long> joinedCommunityIds,
+            @Param("followedTopicIds") List<Long> followedTopicIds,
+            @Param("currentUserId") Long currentUserId,
+            Pageable pageable);
+
+    // Find feed posts for unauthenticated users (public posts only, sorted by newest)
+    @Query("SELECT p FROM Post p ORDER BY p.createdAt DESC")
+    Page<Post> findPublicFeedPosts(Pageable pageable);
 }
 
 

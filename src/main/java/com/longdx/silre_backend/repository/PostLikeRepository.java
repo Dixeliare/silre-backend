@@ -37,6 +37,11 @@ public interface PostLikeRepository extends JpaRepository<PostLike, PostLikeId> 
     @Query("SELECT pl.postId FROM PostLike pl WHERE pl.userId = :userId")
     List<Long> findPostIdsByUserId(@Param("userId") Long userId);
 
+    // Find liked post IDs for a user within a specific set of post IDs (for pagination)
+    // This is more efficient than querying all liked posts when we only need to check a page
+    @Query("SELECT pl.postId FROM PostLike pl WHERE pl.userId = :userId AND pl.postId IN :postIds")
+    List<Long> findPostIdsByUserIdAndPostIdIn(@Param("userId") Long userId, @Param("postIds") List<Long> postIds);
+
     // Delete like by user and post
     void deleteByUserIdAndPostId(Long userId, Long postId);
 }

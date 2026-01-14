@@ -34,12 +34,18 @@ public record PostResponse(
         
         // Timestamps
         OffsetDateTime createdAt,
-        OffsetDateTime updatedAt
+        OffsetDateTime updatedAt,
+        
+        // User-specific data (if authenticated)
+        Boolean isLiked  // Whether current user liked this post
 ) {
     /**
      * Factory method to create PostResponse from Post entity
+     * 
+     * @param post Post entity
+     * @param isLiked Whether current user liked this post (null if not authenticated)
      */
-    public static PostResponse from(Post post) {
+    public static PostResponse from(Post post, Boolean isLiked) {
         return new PostResponse(
                 post.getPublicId(),
                 post.getTitle(),
@@ -55,8 +61,16 @@ public record PostResponse(
                 post.getSavesCount(),
                 post.getViralScore(),
                 post.getCreatedAt(),
-                post.getUpdatedAt()
+                post.getUpdatedAt(),
+                isLiked
         );
+    }
+    
+    /**
+     * Factory method without isLiked (for unauthenticated requests)
+     */
+    public static PostResponse from(Post post) {
+        return from(post, null);
     }
 
     // Nested summary DTOs

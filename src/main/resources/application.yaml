@@ -34,6 +34,10 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         default_schema: public # Chỉ định schema mặc định
         format_sql: true
+
+  threads:
+    virtual:
+      enabled: true
   
   flyway:
     enabled: true

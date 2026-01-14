@@ -335,3 +335,18 @@ if (lockLost) {
 - ✅ **Self-healing** qua restart
 
 **Đây là giải pháp enterprise-grade để đảm bảo TSID uniqueness!**
+
+---
+
+## 🚀 Production Deployment
+
+**⚠️ Lưu ý:** Fail-fast là intentional để prevent corruption, nhưng trong production **PHẢI** có auto-restart mechanism.
+
+**Xem thêm:** [`TSID_PRODUCTION_DEPLOYMENT.md`](./TSID_PRODUCTION_DEPLOYMENT.md) để biết cách setup:
+- Docker restart policies
+- systemd service auto-restart
+- Kubernetes deployment với health checks
+- Monitoring & alerting
+- Self-healing flow
+
+**TL;DR:** Không cần restart thủ công - auto-restart mechanism (systemd/Docker/K8s) sẽ tự động restart khi instance crash!

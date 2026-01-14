@@ -514,8 +514,8 @@ public class TsidConfig {
      * - Better error handling and logging
      * - No daemon threads (uses Spring's task scheduler)
      */
-    @Scheduled(fixedDelayString = "PT12H", // Run every 12 hours (ISO 8601 duration)
-            initialDelayString = "PT12H" // First run after 12 hours (not immediately)
+    @Scheduled(fixedDelayString = "PT10M", // Run every 12 hours (ISO 8601 duration)
+            initialDelayString = "PT5M" // First run after 12 hours (not immediately)
     )
     public void refreshTsidLock() {
 

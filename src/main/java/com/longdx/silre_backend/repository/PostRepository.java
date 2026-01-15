@@ -68,8 +68,11 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             @Param("currentUserId") Long currentUserId,
             Pageable pageable);
 
-    // Find feed posts for unauthenticated users (public posts only, sorted by newest)
-    @Query("SELECT p FROM Post p ORDER BY p.createdAt DESC")
+    // Find feed posts for all users (public posts only, sorted by newest)
+    // Excludes posts from private communities (only public communities and personal posts)
+    @Query("SELECT p FROM Post p " +
+           "WHERE (p.community IS NULL OR p.community.isPrivate = false) " +
+           "ORDER BY p.createdAt DESC")
     Page<Post> findPublicFeedPosts(Pageable pageable);
 }
 

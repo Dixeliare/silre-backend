@@ -4,6 +4,8 @@ import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Contact;
 import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.info.License;
+import io.swagger.v3.oas.models.security.SecurityRequirement;
+import io.swagger.v3.oas.models.security.SecurityScheme;
 import io.swagger.v3.oas.models.servers.Server;
 import org.springdoc.core.models.GroupedOpenApi;
 import org.springframework.beans.factory.annotation.Value;
@@ -49,6 +51,7 @@ public class OpenApiConfig {
                                 **Authentication:**
                                 - JWT Token-based authentication
                                 - Use `/api/v1/auth/login` to get access token
+                                - Add token to Authorization header: `Bearer <token>`
                                 
                                 **ID Strategy:**
                                 - Internal IDs: TSID (Time-Sorted ID) - 64-bit integers
@@ -67,7 +70,14 @@ public class OpenApiConfig {
                         new Server()
                                 .url("https://api.silre.com")
                                 .description("Production Server")
-                ));
+                ))
+                .addSecurityItem(new SecurityRequirement().addList("Bearer Authentication"))
+                .components(new io.swagger.v3.oas.models.Components()
+                        .addSecuritySchemes("Bearer Authentication", new SecurityScheme()
+                                .type(SecurityScheme.Type.HTTP)
+                                .scheme("bearer")
+                                .bearerFormat("JWT")
+                                .description("Enter JWT token (get from /api/v1/auth/login)")));
     }
 
     /**

@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -146,7 +147,8 @@ public class AuthController {
     @Operation(
             summary = "Validate access token",
             description = "Check if the provided access token is valid and not expired. " +
-                    "Token should be provided in Authorization header as 'Bearer <token>'."
+                    "Token should be provided in Authorization header as 'Bearer <token>' or as query parameter 'token'.",
+            security = @SecurityRequirement(name = "Bearer Authentication")
     )
     @ApiResponses(value = {
             @ApiResponse(
@@ -161,12 +163,25 @@ public class AuthController {
             )
     })
     @GetMapping("/validate")
-    public ResponseEntity<Boolean> validateToken(@RequestHeader(value = "Authorization", required = false) String authHeader) {
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+    public ResponseEntity<Boolean> validateToken(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @RequestParam(value = "token", required = false) String tokenParam) {
+        
+        String token = null;
+        
+        // Try to get token from Authorization header first
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            token = authHeader.substring(7); // Remove "Bearer " prefix
+        } 
+        // Fallback: try to get token from query parameter (for easier testing)
+        else if (tokenParam != null && !tokenParam.isEmpty()) {
+            token = tokenParam;
+        }
+        
+        if (token == null || token.isEmpty()) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(false);
         }
 
-        String token = authHeader.substring(7); // Remove "Bearer " prefix
         boolean isValid = authService.validateAccessToken(token);
         
         if (isValid) {

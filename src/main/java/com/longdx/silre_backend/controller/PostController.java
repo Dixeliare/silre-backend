@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
@@ -66,7 +67,8 @@ public class PostController {
     @PostMapping
     @Operation(
             summary = "Create a new post",
-            description = "Create a new post (personal or community post). Requires authentication."
+            description = "Create a new post (personal or community post). Requires authentication.",
+            security = @SecurityRequirement(name = "Bearer Authentication")
     )
     @ApiResponses(value = {
             @ApiResponse(
@@ -126,7 +128,8 @@ public class PostController {
     @PutMapping("/{publicId}")
     @Operation(
             summary = "Update post",
-            description = "Update post. Only the author can update their own post. Requires authentication."
+            description = "Update post. Only the author can update their own post. Requires authentication.",
+            security = @SecurityRequirement(name = "Bearer Authentication")
     )
     @ApiResponses(value = {
             @ApiResponse(
@@ -167,7 +170,8 @@ public class PostController {
     @DeleteMapping("/{publicId}")
     @Operation(
             summary = "Delete post",
-            description = "Delete post. Only the author can delete their own post. Requires authentication."
+            description = "Delete post. Only the author can delete their own post. Requires authentication.",
+            security = @SecurityRequirement(name = "Bearer Authentication")
     )
     @ApiResponses(value = {
             @ApiResponse(
@@ -206,7 +210,8 @@ public class PostController {
     @PostMapping("/{publicId}/like")
     @Operation(
             summary = "Like a post",
-            description = "Like a post. Requires authentication."
+            description = "Like a post. Requires authentication.",
+            security = @SecurityRequirement(name = "Bearer Authentication")
     )
     @ApiResponses(value = {
             @ApiResponse(
@@ -240,7 +245,8 @@ public class PostController {
     @DeleteMapping("/{publicId}/like")
     @Operation(
             summary = "Unlike a post",
-            description = "Unlike a post. Requires authentication."
+            description = "Unlike a post. Requires authentication.",
+            security = @SecurityRequirement(name = "Bearer Authentication")
     )
     @ApiResponses(value = {
             @ApiResponse(

@@ -1,5 +1,6 @@
 package com.longdx.silre_backend.dto.request;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
@@ -22,8 +23,11 @@ public record CreatePostRequest(
         String communityPublicId,  // Optional: if provided, post belongs to community
         String topicSlug,  // Optional: for personal posts with topic
 
+        // Note: slug is auto-generated from title/content, user should not provide it
+        @Deprecated
+        @Schema(hidden = true)  // Hide from Swagger UI since it's auto-generated
         @Size(max = 350, message = "Slug must not exceed 350 characters")
-        String slug,  // Optional: for SEO
+        String slug,  // Deprecated: Auto-generated from title, ignored if provided
 
         Boolean isNsfw  // Optional: defaults to false
 ) {

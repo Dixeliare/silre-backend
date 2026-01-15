@@ -103,6 +103,21 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Handle ForbiddenException (authorization errors)
+     */
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<Map<String, Object>> handleForbiddenException(
+            ForbiddenException ex) {
+        logger.debug("ForbiddenException: {}", ex.getMessage());
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", "error");
+        response.put("message", ex.getMessage());
+
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+    }
+
+    /**
      * Handle generic exceptions
      */
     @ExceptionHandler(Exception.class)

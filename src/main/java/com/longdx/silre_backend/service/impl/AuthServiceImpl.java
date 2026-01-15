@@ -94,7 +94,7 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional  // Changed from readOnly=true because we update lastLoginAt
     public AuthResponse login(LoginRequest request) {
         logger.debug("Login attempt for email: {}", request.email());
 
@@ -180,16 +180,20 @@ public class AuthServiceImpl implements AuthService {
         try {
             // Validate token signature and expiration
             if (!jwtTokenProvider.validateToken(token)) {
+                logger.debug("Token validation failed: invalid signature or issuer");
                 return false;
             }
 
             // Check token type
             if (!jwtTokenProvider.validateTokenType(token, "access")) {
+                String tokenType = jwtTokenProvider.getTokenTypeFromToken(token);
+                logger.debug("Token validation failed: expected 'access' but got '{}'", tokenType);
                 return false;
             }
 
             // Check if token is expired
             if (jwtTokenProvider.isTokenExpired(token)) {
+                logger.debug("Token validation failed: token is expired");
                 return false;
             }
 
@@ -198,7 +202,14 @@ public class AuthServiceImpl implements AuthService {
             User user = userRepository.findById(userId)
                     .orElse(null);
 
-            if (user == null || !user.getIsActive() || !"ACTIVE".equals(user.getAccountStatus())) {
+            if (user == null) {
+                logger.debug("Token validation failed: user not found (userId: {})", userId);
+                return false;
+            }
+            
+            if (!user.getIsActive() || !"ACTIVE".equals(user.getAccountStatus())) {
+                logger.debug("Token validation failed: user is not active (userId: {}, isActive: {}, status: {})", 
+                        userId, user.getIsActive(), user.getAccountStatus());
                 return false;
             }
 

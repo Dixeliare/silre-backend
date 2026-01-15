@@ -4,9 +4,11 @@ import com.aventrix.jnanoid.jnanoid.NanoIdUtils;
 import com.longdx.silre_backend.dto.request.CreatePostRequest;
 import com.longdx.silre_backend.dto.request.UpdatePostRequest;
 import com.longdx.silre_backend.dto.response.PostResponse;
+import com.longdx.silre_backend.exception.ForbiddenException;
 import com.longdx.silre_backend.model.*;
 import com.longdx.silre_backend.repository.*;
 import com.longdx.silre_backend.service.PostService;
+import com.longdx.silre_backend.util.SlugUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -40,8 +42,12 @@ public class PostServiceImpl implements PostService {
     private final UserRepository userRepository;
     private final CommunityRepository communityRepository;
     private final TopicRepository topicRepository;
+    // Reserved for future "Following Feed" feature (personalized feed based on follows/joins/topics)
+    @SuppressWarnings("unused")
     private final UserFollowRepository userFollowRepository;
     private final CommunityMemberRepository communityMemberRepository;
+    // Reserved for future "Following Feed" feature
+    @SuppressWarnings("unused")
     private final UserTopicFollowRepository userTopicFollowRepository;
 
     public PostServiceImpl(
@@ -76,13 +82,24 @@ public class PostServiceImpl implements PostService {
         post.setAuthor(author);
         post.setContent(request.content());
         post.setTitle(request.title());
-        post.setSlug(request.slug());
+        
+        // Auto-generate slug from title (or content if no title)
+        // User-provided slug is ignored - we always auto-generate for consistency
+        String generatedSlug = SlugUtils.generateSlugFromTitle(request.title(), request.content());
+        post.setSlug(generatedSlug);
+        
         post.setIsNsfw(request.isNsfw() != null ? request.isNsfw() : false);
 
         // Handle community (if provided)
         if (request.communityPublicId() != null && !request.communityPublicId().isEmpty()) {
             Community community = communityRepository.findByPublicId(request.communityPublicId())
                     .orElseThrow(() -> new IllegalArgumentException("Community not found: " + request.communityPublicId()));
+            
+            // Authorization: Only members can post in communities
+            if (!isCommunityMember(authorId, community.getId())) {
+                throw new ForbiddenException("You must be a member of this community to post");
+            }
+            
             post.setCommunity(community);
             post.setIsNsfw(community.getIsNsfw()); // Inherit NSFW from community
         }
@@ -128,6 +145,11 @@ public class PostServiceImpl implements PostService {
         Post post = postRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new IllegalArgumentException("Post not found: " + publicId));
 
+        // Authorization: If post belongs to a private community, user must be a member
+        if (post.getCommunity() != null && !canViewCommunityPosts(currentUserId, post.getCommunity())) {
+            throw new ForbiddenException("You must be a member to view posts in this private community");
+        }
+
         // Check if current user liked this post
         Boolean isLiked = null;
         if (currentUserId != null) {
@@ -142,21 +164,27 @@ public class PostServiceImpl implements PostService {
         Post post = postRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new IllegalArgumentException("Post not found: " + publicId));
 
-        // Authorization check: only author can update
+        // Authorization check: only author can update (moderators cannot update posts, only delete)
         if (!post.getAuthor().getInternalId().equals(currentUserId)) {
-            throw new IllegalArgumentException("Only the author can update this post");
+            throw new ForbiddenException("Only the author can update this post");
         }
 
         // Update fields (only if provided)
         if (request.title() != null) {
             post.setTitle(request.title());
+            // Auto-regenerate slug when title changes
+            String newSlug = SlugUtils.generateSlugFromTitle(request.title(), post.getContent());
+            post.setSlug(newSlug);
         }
         if (request.content() != null) {
             post.setContent(request.content());
+            // Regenerate slug if title is empty (use content as fallback)
+            if (post.getTitle() == null || post.getTitle().trim().isEmpty()) {
+                String newSlug = SlugUtils.generateSlugFromTitle(null, request.content());
+                post.setSlug(newSlug);
+            }
         }
-        if (request.slug() != null) {
-            post.setSlug(request.slug());
-        }
+        // Note: slug field in UpdatePostRequest is ignored - always auto-generated
         if (request.isNsfw() != null) {
             post.setIsNsfw(request.isNsfw());
         }
@@ -175,9 +203,16 @@ public class PostServiceImpl implements PostService {
         Post post = postRepository.findByPublicId(publicId)
                 .orElseThrow(() -> new IllegalArgumentException("Post not found: " + publicId));
 
-        // Authorization check: only author can delete
-        if (!post.getAuthor().getInternalId().equals(currentUserId)) {
-            throw new IllegalArgumentException("Only the author can delete this post");
+        // Authorization check: author OR community admin/moderator can delete
+        boolean isAuthor = post.getAuthor().getInternalId().equals(currentUserId);
+        boolean isCommunityModerator = false;
+        
+        if (post.getCommunity() != null) {
+            isCommunityModerator = isCommunityAdminOrModerator(currentUserId, post.getCommunity().getId());
+        }
+        
+        if (!isAuthor && !isCommunityModerator) {
+            throw new ForbiddenException("Only the author or community moderators can delete this post");
         }
 
         // Update community post count (if community post)
@@ -251,47 +286,10 @@ public class PostServiceImpl implements PostService {
     @Override
     @Transactional(readOnly = true)
     public Page<PostResponse> getFeed(Pageable pageable, Long currentUserId) {
-        Page<Post> posts;
-        
-        if (currentUserId == null) {
-            // Unauthenticated users: show all public posts (newest first)
-            posts = postRepository.findPublicFeedPosts(pageable);
-        } else {
-            // Authenticated users: show posts from:
-            // 1. Users they follow
-            // 2. Communities they joined
-            // 3. Topics they follow
-            // 4. Their own posts
-            
-            // Get followed user IDs
-            List<Long> followedUserIds = userFollowRepository
-                    .findAcceptedFollowsByFollowerId(currentUserId)
-                    .stream()
-                    .map(follow -> follow.getTargetId())
-                    .toList();
-            
-            // Get joined community IDs
-            List<Long> joinedCommunityIds = communityMemberRepository
-                    .findCommunityIdsByUserId(currentUserId);
-            
-            // Get followed topic IDs
-            List<Long> followedTopicIds = userTopicFollowRepository
-                    .findByUserId(currentUserId)
-                    .stream()
-                    .map(follow -> follow.getTopicId())
-                    .toList();
-            
-            // Query feed posts
-            // Use a non-existent ID (-1) for empty lists to avoid JPA IN clause issues with empty collections
-            // The query will still work because -1 won't match any real IDs
-            posts = postRepository.findFeedPosts(
-                    followedUserIds.isEmpty() ? List.of(-1L) : followedUserIds,
-                    joinedCommunityIds.isEmpty() ? List.of(-1L) : joinedCommunityIds,
-                    followedTopicIds.isEmpty() ? List.of(-1L) : followedTopicIds,
-                    currentUserId,
-                    pageable
-            );
-        }
+        // Feed shows all public posts (newest first)
+        // This is similar to Twitter/Reddit where feed shows all posts, not just from network
+        // Private community posts are filtered out (only members can see them)
+        Page<Post> posts = postRepository.findPublicFeedPosts(pageable);
         
         return mapToPostResponsePage(posts, currentUserId);
     }
@@ -311,6 +309,11 @@ public class PostServiceImpl implements PostService {
     public Page<PostResponse> getPostsByCommunity(String communityPublicId, Pageable pageable, Long currentUserId) {
         Community community = communityRepository.findByPublicId(communityPublicId)
                 .orElseThrow(() -> new IllegalArgumentException("Community not found: " + communityPublicId));
+
+        // Authorization: Private communities require membership
+        if (!canViewCommunityPosts(currentUserId, community)) {
+            throw new ForbiddenException("You must be a member to view posts in this private community");
+        }
 
         Page<Post> posts = postRepository.findByCommunity_Id(community.getId(), pageable);
         return mapToPostResponsePage(posts, currentUserId);
@@ -379,5 +382,58 @@ public class PostServiceImpl implements PostService {
             Boolean isLiked = currentUserId != null ? likedPostIds.contains(post.getId()) : null;
             return PostResponse.from(post, isLiked);
         });
+    }
+
+    /**
+     * Check if user is a member of the community
+     * 
+     * @param userId User ID
+     * @param communityId Community ID
+     * @return true if user is an active member of the community
+     */
+    private boolean isCommunityMember(Long userId, Long communityId) {
+        return communityMemberRepository.existsByCommunityIdAndUserId(communityId, userId) &&
+               communityMemberRepository.findByCommunityIdAndUserId(communityId, userId)
+                       .map(member -> "ACTIVE".equals(member.getStatus()))
+                       .orElse(false);
+    }
+
+    /**
+     * Check if user is an admin or moderator of the community
+     * 
+     * @param userId User ID
+     * @param communityId Community ID
+     * @return true if user is an active admin or moderator
+     */
+    private boolean isCommunityAdminOrModerator(Long userId, Long communityId) {
+        return communityMemberRepository.findByCommunityIdAndUserId(communityId, userId)
+                .map(member -> {
+                    String role = member.getRole();
+                    String status = member.getStatus();
+                    return "ACTIVE".equals(status) && 
+                           ("ADMIN".equals(role) || "MODERATOR".equals(role));
+                })
+                .orElse(false);
+    }
+
+    /**
+     * Check if user can view posts in a private community
+     * 
+     * @param userId User ID (can be null for unauthenticated users)
+     * @param community Community entity
+     * @return true if community is public OR user is a member
+     */
+    private boolean canViewCommunityPosts(Long userId, Community community) {
+        // Public communities are viewable by everyone
+        if (community.getIsPrivate() == null || !community.getIsPrivate()) {
+            return true;
+        }
+        
+        // Private communities require membership
+        if (userId == null) {
+            return false; // Unauthenticated users cannot view private communities
+        }
+        
+        return isCommunityMember(userId, community.getId());
     }
 }

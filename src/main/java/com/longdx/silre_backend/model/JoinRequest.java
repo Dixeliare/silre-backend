@@ -27,12 +27,9 @@ public class JoinRequest {
     private User user; // Người xin join
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "forum_id")
-    private Forum forum;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "community_id")
-    private Community community;
+    @JoinColumn(name = "community_id", nullable = false)
+    @NotNull
+    private Community community; // Chỉ cho Private Communities
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)

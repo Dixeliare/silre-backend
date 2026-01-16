@@ -4,6 +4,7 @@ import com.longdx.silre_backend.dto.request.LoginRequest;
 import com.longdx.silre_backend.dto.request.RefreshTokenRequest;
 import com.longdx.silre_backend.dto.request.RegisterRequest;
 import com.longdx.silre_backend.dto.response.AuthResponse;
+import com.longdx.silre_backend.dto.response.StandardResponse;
 import com.longdx.silre_backend.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -64,14 +65,9 @@ public class AuthController {
             )
     })
     @PostMapping("/register")
-    public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
-        try {
-            AuthResponse response = authService.register(request);
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
-        } catch (IllegalArgumentException e) {
-            // Email already exists or validation error
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
-        }
+    public ResponseEntity<StandardResponse<AuthResponse>> register(@Valid @RequestBody RegisterRequest request) {
+        AuthResponse response = authService.register(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(StandardResponse.success("User registered successfully", response));
     }
 
     /**
@@ -96,14 +92,9 @@ public class AuthController {
             )
     })
     @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
-        try {
-            AuthResponse response = authService.login(request);
-            return ResponseEntity.ok(response);
-        } catch (IllegalArgumentException e) {
-            // Invalid credentials or account not active
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
+    public ResponseEntity<StandardResponse<AuthResponse>> login(@Valid @RequestBody LoginRequest request) {
+        AuthResponse response = authService.login(request);
+        return ResponseEntity.ok(StandardResponse.success("Login successful", response));
     }
 
     /**
@@ -128,14 +119,9 @@ public class AuthController {
             )
     })
     @PostMapping("/refresh")
-    public ResponseEntity<AuthResponse> refreshToken(@Valid @RequestBody RefreshTokenRequest request) {
-        try {
-            AuthResponse response = authService.refreshToken(request);
-            return ResponseEntity.ok(response);
-        } catch (IllegalArgumentException e) {
-            // Invalid or expired refresh token
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
+    public ResponseEntity<StandardResponse<AuthResponse>> refreshToken(@Valid @RequestBody RefreshTokenRequest request) {
+        AuthResponse response = authService.refreshToken(request);
+        return ResponseEntity.ok(StandardResponse.success("Token refreshed successfully", response));
     }
 
     /**
@@ -163,7 +149,7 @@ public class AuthController {
             )
     })
     @GetMapping("/validate")
-    public ResponseEntity<Boolean> validateToken(
+    public ResponseEntity<StandardResponse<Boolean>> validateToken(
             @RequestHeader(value = "Authorization", required = false) String authHeader,
             @RequestParam(value = "token", required = false) String tokenParam) {
         
@@ -179,15 +165,17 @@ public class AuthController {
         }
         
         if (token == null || token.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(false);
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(StandardResponse.error("Token is required"));
         }
 
         boolean isValid = authService.validateAccessToken(token);
         
         if (isValid) {
-            return ResponseEntity.ok(true);
+            return ResponseEntity.ok(StandardResponse.success("Token is valid", true));
         } else {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(false);
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(StandardResponse.error("Token is invalid or expired"));
         }
     }
 }

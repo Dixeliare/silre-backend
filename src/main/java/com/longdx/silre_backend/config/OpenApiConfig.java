@@ -43,10 +43,12 @@ public class OpenApiConfig {
                                 Hybrid Social Platform Backend API
                                 
                                 **Features:**
-                                - Forum System (Knowledge Base)
                                 - Social Network (Communities & Personal Posts)
+                                - Community-First Architecture (Community là "Nguồn cấp")
                                 - User Identity (Dual-Key: TSID + NanoID)
-                                - Smart Feed Algorithm (Gravity Score)
+                                - Adaptive Feed Algorithm (Gravity Score)
+                                - Creator Features (Series, Zero Compression, Watermark)
+                                - Comment System (Instagram-Style - Flat, 2 levels)
                                 
                                 **Authentication:**
                                 - JWT Token-based authentication

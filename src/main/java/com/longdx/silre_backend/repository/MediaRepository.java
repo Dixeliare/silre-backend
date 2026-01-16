@@ -14,9 +14,6 @@ public interface MediaRepository extends JpaRepository<Media, Long> {
     // Find media by post
     List<Media> findByPost_IdOrderByDisplayOrderAsc(Long postId);
 
-    // Find media by thread
-    List<Media> findByThread_IdOrderByDisplayOrderAsc(Long threadId);
-
     // Find media by comment
     List<Media> findByComment_IdOrderByDisplayOrderAsc(Long commentId);
 
@@ -26,9 +23,5 @@ public interface MediaRepository extends JpaRepository<Media, Long> {
     // Find all media for a post ordered by position
     @Query("SELECT m FROM Media m WHERE m.post.id = :postId ORDER BY m.position ASC, m.displayOrder ASC")
     List<Media> findByPostIdOrdered(@Param("postId") Long postId);
-
-    // Find all media for a thread ordered by position
-    @Query("SELECT m FROM Media m WHERE m.thread.id = :threadId ORDER BY m.position ASC, m.displayOrder ASC")
-    List<Media> findByThreadIdOrdered(@Param("threadId") Long threadId);
 }
 

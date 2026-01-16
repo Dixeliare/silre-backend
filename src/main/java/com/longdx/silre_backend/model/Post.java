@@ -34,6 +34,10 @@ public class Post {
     private Community community; // NULL = Personal Post, NOT NULL = Community Post
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "series_id")
+    private Series series; // Cho Creator - gom bài thành tập/chapter
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "topic_id")
     private Topic topic; // CHỈ DÙNG CHO PERSONAL POSTS. NULL = post không có topic
 

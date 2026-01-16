@@ -1,12 +1,14 @@
 -- =====================================================
 -- INITIAL DATABASE SCHEMA
--- Hybrid Social Platform Backend
--- Version: 1.0
+-- Silre Social Platform Backend
+-- Version: 2.0 (Community-First Architecture)
 -- Author: LongDx
--- Based on: SocialMediaV1.sql (from DrawDB)
 -- =====================================================
 -- Note: Tất cả business logic được xử lý ở Backend
 -- Database chỉ lưu schema thuần, không có triggers, functions, hoặc CHECK constraints
+-- =====================================================
+-- Community-First Architecture: Community là "Nguồn cấp", không phải "phòng" để user phải vào xem
+-- Loại bỏ Forum hoàn toàn để tránh làm rối UI và UX
 -- =====================================================
 
 -- =====================================================
@@ -47,101 +49,7 @@ COMMENT ON TABLE users IS 'Bảng người dùng với Dual-Key Identity (TSID i
 
 
 -- =====================================================
--- 2. FORUM SYSTEM (4 Layers: Forum -> Category -> Sub-forum -> Thread)
--- =====================================================
-
-CREATE TABLE forums (
-    id BIGINT PRIMARY KEY,                              -- TSID
-    name VARCHAR(255) NOT NULL,
-    slug VARCHAR(255) NOT NULL,                         -- URL slug (không unique, có thể trùng - chỉ dùng cho SEO)
-    public_id VARCHAR(10) NOT NULL UNIQUE,              -- Short ID cho URL (slug.public_id) - Dùng để query DB
-    description TEXT,
-    owner_id BIGINT NOT NULL REFERENCES users(internal_id) ON DELETE RESTRICT, -- Admin tạo forum
-    is_private BOOLEAN DEFAULT FALSE,                   -- Private forum
-    is_searchable BOOLEAN DEFAULT TRUE,                  -- Có thể search (discoverable)
-    is_nsfw BOOLEAN DEFAULT FALSE,                      -- NSFW flag
-    member_count INTEGER DEFAULT 0,                      -- Số thành viên
-    thread_count INTEGER DEFAULT 0,                       -- Số threads (denormalized)
-    category_count INTEGER DEFAULT 0,                    -- Số categories (denormalized) (categories_count)
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_forums_slug ON forums(slug);
-CREATE INDEX idx_forums_public_id ON forums(public_id);
-CREATE INDEX idx_forums_owner ON forums(owner_id);
-CREATE INDEX idx_forums_is_searchable ON forums(is_searchable) WHERE is_searchable = TRUE;
-
-COMMENT ON TABLE forums IS 'Lớp Forum ngoài cùng - Cho phép nhiều forum độc lập (Voz, SpringBoot VN, etc.) trong cùng 1 app';
-
-CREATE TABLE categories (
-    id BIGINT PRIMARY KEY,                             -- TSID (internal_id)
-    forum_id BIGINT NOT NULL REFERENCES forums(id) ON DELETE CASCADE, -- Forum chứa category này
-    name VARCHAR(255) NOT NULL,                         -- Display name (display_name)
-    slug VARCHAR(255) NOT NULL,                         -- Slug (unique trong forum, không phải global)
-    description TEXT,
-    display_order INTEGER DEFAULT 0,                    -- Thứ tự hiển thị trong forum
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE,
-    UNIQUE(forum_id, slug)                              -- Slug unique trong forum
-);
-
-CREATE INDEX idx_categories_forum ON categories(forum_id);
-CREATE INDEX idx_categories_slug ON categories(slug);
-CREATE INDEX idx_categories_forum_order ON categories(forum_id, display_order);
-
-COMMENT ON TABLE categories IS 'Danh mục lớn trong Forum. Slug unique trong forum, không phải global';
-
-CREATE TABLE sub_forums (
-    id BIGINT PRIMARY KEY,                              -- TSID (không phải INTEGER)
-    category_id BIGINT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
-    name VARCHAR(255) NOT NULL,                         -- Display name (display_name)
-    slug VARCHAR(255) NOT NULL,
-    description TEXT,
-    display_order INTEGER DEFAULT 0,                    -- Thứ tự hiển thị (nếu dùng manual sorting)
-    last_activity_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, -- Activity gần nhất (comment/thread mới)
-    last_thread_id BIGINT,                              -- Thread có activity gần nhất (FK sẽ thêm sau)
-    last_comment_id BIGINT,                             -- Comment gần nhất (FK sẽ thêm sau)
-    last_activity_by_user_id BIGINT REFERENCES users(internal_id) ON DELETE SET NULL, -- User tạo activity gần nhất (hiển thị tên)
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE,
-    UNIQUE(category_id, slug)                           -- Slug unique trong category
-);
-
-CREATE INDEX idx_sub_forums_category ON sub_forums(category_id);
-CREATE INDEX idx_sub_forums_slug ON sub_forums(slug);
-CREATE INDEX idx_sub_forums_last_activity ON sub_forums(last_activity_at DESC); -- Sort theo activity
-CREATE INDEX idx_sub_forums_category_activity ON sub_forums(category_id, last_activity_at DESC); -- Sort sub-forums trong category theo activity
-CREATE INDEX idx_sub_forums_last_thread ON sub_forums(last_thread_id) WHERE last_thread_id IS NOT NULL;
-CREATE INDEX idx_sub_forums_last_comment ON sub_forums(last_comment_id) WHERE last_comment_id IS NOT NULL;
-
-COMMENT ON TABLE sub_forums IS 'Sub-forum với thông tin activity gần nhất. last_thread_id/last_comment_id để jump đến activity khi click vào sub-forum';
-
-CREATE TABLE forum_threads (
-    id BIGINT PRIMARY KEY,                              -- TSID (internal_id)
-    sub_forum_id BIGINT NOT NULL REFERENCES sub_forums(id) ON DELETE CASCADE,
-    author_id BIGINT NOT NULL REFERENCES users(internal_id) ON DELETE CASCADE,
-    title VARCHAR(500) NOT NULL,                        -- Bắt buộc có tiêu đề
-    content TEXT NOT NULL,                              -- Bắt buộc có nội dung
-    public_id VARCHAR(12) NOT NULL UNIQUE,              -- Short ID cho URL (slug.public_id)
-    slug VARCHAR(350),                                 -- Slug từ title (để SEO) - không phải BIGINT
-    view_count INTEGER DEFAULT 0,
-    last_activity_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE
-);
-
-CREATE INDEX idx_forum_threads_sub_forum ON forum_threads(sub_forum_id);
-CREATE INDEX idx_forum_threads_author ON forum_threads(author_id);
-CREATE INDEX idx_forum_threads_public_id ON forum_threads(public_id);
-CREATE INDEX idx_forum_threads_last_activity ON forum_threads(last_activity_at DESC);
-CREATE INDEX idx_forum_threads_created ON forum_threads(created_at DESC);
-
-COMMENT ON TABLE forum_threads IS 'Threads trong Forum. Bắt buộc có title và content';
-
-
--- =====================================================
--- 3. SOCIAL SYSTEM (Communities & Posts)
+-- 2. SOCIAL SYSTEM (Communities & Posts)
 -- =====================================================
 
 CREATE TABLE communities (
@@ -168,7 +76,7 @@ CREATE INDEX idx_communities_owner ON communities(owner_id);
 CREATE INDEX idx_communities_slug ON communities(slug);
 CREATE INDEX idx_communities_is_searchable ON communities(is_searchable) WHERE is_searchable = TRUE;
 
-COMMENT ON TABLE communities IS 'Nhóm cộng đồng. community_id NULL trong posts = Personal Post';
+COMMENT ON TABLE communities IS 'Nhóm cộng đồng - Community là "Nguồn cấp", không phải "phòng" để user phải vào xem. community_id NULL trong posts = Personal Post';
 
 -- =====================================================
 -- TOPICS SYSTEM (Phải tạo trước posts vì posts có FK đến topics)
@@ -192,17 +100,40 @@ CREATE INDEX idx_topics_name ON topics(name);
 CREATE INDEX idx_topics_featured ON topics(is_featured) WHERE is_featured = TRUE;
 CREATE INDEX idx_topics_follower_count ON topics(follower_count DESC); -- Sort topics theo popularity
 
-COMMENT ON TABLE topics IS 'Topics system giống Threads (Meta). Users có thể follow topics để xem posts về topic đó. Mỗi post chỉ có 1 topic (one-to-many: topic → posts). Post có thể không có topic (topic_id IS NULL trong posts)';
+COMMENT ON TABLE topics IS 'Topics system giống Threads (Meta). Users có thể follow topics để xem posts về topic đó. Mỗi post chỉ có 1 topic (one-to-many: topic → posts). Post có thể không có topic (topic_id IS NULL trong posts). CHỈ dùng cho Personal Posts';
+
+-- =====================================================
+-- SERIES SYSTEM (Cho Creator - Gom bài đăng thành tập/chapter)
+-- =====================================================
+
+CREATE TABLE series (
+    id BIGINT PRIMARY KEY,                              -- TSID
+    creator_id BIGINT NOT NULL REFERENCES users(internal_id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,                        -- Tên series
+    description TEXT,                                   -- Mô tả series
+    public_id VARCHAR(12) NOT NULL UNIQUE,             -- Short ID cho URL
+    slug VARCHAR(350),                                 -- Slug (SEO)
+    post_count INTEGER DEFAULT 0,                       -- Số bài trong series (denormalized)
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX idx_series_creator ON series(creator_id);
+CREATE INDEX idx_series_public_id ON series(public_id);
+CREATE INDEX idx_series_slug ON series(slug);
+
+COMMENT ON TABLE series IS 'Series cho Creator - Gom các bài đăng thành tập/chapter. User có thể lướt xem trọn bộ bằng viewer chuyên dụng';
 
 CREATE TABLE posts (
     id BIGINT PRIMARY KEY,                              -- TSID
     author_id BIGINT NOT NULL REFERENCES users(internal_id) ON DELETE CASCADE,
     community_id BIGINT REFERENCES communities(id) ON DELETE SET NULL, -- NULL = Personal Post
+    series_id BIGINT REFERENCES series(id) ON DELETE SET NULL,         -- Cho Creator - gom bài thành tập/chapter
     topic_id BIGINT REFERENCES topics(id) ON DELETE SET NULL,          -- CHỈ DÙNG CHO PERSONAL POSTS. NULL = post không có topic
     title VARCHAR(255),                                 -- Title (optional, có thể NULL cho social posts)
     content TEXT NOT NULL,
     public_id VARCHAR(12) NOT NULL UNIQUE,             -- Short ID cho URL - không phải BIGINT
-    slug VARCHAR(350),                                 -- Slug (optional, cho SEO)
+    slug VARCHAR(350),                                 -- Slug (auto-generated từ title/content, SEO)
     is_nsfw BOOLEAN DEFAULT FALSE,                      -- NSFW flag (kế thừa từ community nếu có)
     
     -- Stats cho Ranking Algorithm (Gravity Score)
@@ -223,41 +154,41 @@ CREATE TABLE posts (
 
 CREATE INDEX idx_posts_author ON posts(author_id);
 CREATE INDEX idx_posts_community ON posts(community_id);
+CREATE INDEX idx_posts_series ON posts(series_id) WHERE series_id IS NOT NULL;
 CREATE INDEX idx_posts_topic ON posts(topic_id) WHERE topic_id IS NOT NULL; -- Index cho posts có topic
 CREATE INDEX idx_posts_public_id ON posts(public_id);
 CREATE INDEX idx_posts_created ON posts(created_at DESC);
 CREATE INDEX idx_posts_viral_score ON posts(viral_score DESC);
 CREATE INDEX idx_posts_community_created ON posts(community_id, created_at DESC) WHERE community_id IS NOT NULL;
 CREATE INDEX idx_posts_topic_created ON posts(topic_id, created_at DESC) WHERE topic_id IS NOT NULL; -- Lấy posts của topic (cho feed)
+CREATE INDEX idx_posts_series_created ON posts(series_id, created_at ASC) WHERE series_id IS NOT NULL; -- Lấy posts trong series theo thứ tự
 
-COMMENT ON TABLE posts IS 'Bài viết Social. community_id NULL = Personal Post, NOT NULL = Community Post. topic_id chỉ dùng cho Personal Posts (có thể NULL nếu post không có topic)';
+COMMENT ON TABLE posts IS 'Bài viết Social. community_id NULL = Personal Post, NOT NULL = Community Post. topic_id chỉ dùng cho Personal Posts (có thể NULL nếu post không có topic). series_id cho Creator để gom bài thành tập/chapter';
 
 
 -- =====================================================
--- 4. INTERACTION SYSTEM (Likes, Comments, Saves, Shares, Follows)
+-- 3. INTERACTION SYSTEM (Likes, Comments, Saves, Shares, Follows)
 -- =====================================================
 
--- Unified Comments Table (Phải tạo trước comment_likes vì comment_likes có FK đến comments)
+-- Comments Table (Instagram-Style - Flat, tối đa 2 cấp)
 CREATE TABLE comments (
     id BIGINT PRIMARY KEY,                              -- TSID
-    post_id BIGINT REFERENCES posts(id) ON DELETE CASCADE,      -- NULL nếu là comment của thread
-    thread_id BIGINT REFERENCES forum_threads(id) ON DELETE CASCADE, -- NULL nếu là comment của post
+    post_id BIGINT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
     author_id BIGINT NOT NULL REFERENCES users(internal_id) ON DELETE CASCADE,
-    parent_comment_id BIGINT REFERENCES comments(id) ON DELETE CASCADE, -- Nested comments (reply)
+    parent_comment_id BIGINT REFERENCES comments(id) ON DELETE CASCADE, -- NULL = Comment chính, NOT NULL = Reply (chỉ 1 cấp)
     content TEXT NOT NULL,
     likes_count INTEGER DEFAULT 0,                      -- Denormalized count (từ comment_likes)
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE
-    -- Note: Business logic (comment phải có post hoặc thread) được xử lý ở Backend
 );
 
-CREATE INDEX idx_comments_post ON comments(post_id) WHERE post_id IS NOT NULL;
-CREATE INDEX idx_comments_thread ON comments(thread_id) WHERE thread_id IS NOT NULL;
+CREATE INDEX idx_comments_post ON comments(post_id);
 CREATE INDEX idx_comments_author ON comments(author_id);
 CREATE INDEX idx_comments_parent ON comments(parent_comment_id) WHERE parent_comment_id IS NOT NULL;
-CREATE INDEX idx_comments_created ON comments(created_at DESC);
+CREATE INDEX idx_comments_post_created ON comments(post_id, created_at DESC, id DESC); -- Cursor-based pagination
+CREATE INDEX idx_comments_parent_created ON comments(parent_comment_id, created_at ASC, id ASC); -- Load replies tại chỗ
 
-COMMENT ON TABLE comments IS 'Unified Comments cho Posts (Personal + Community) và Forum Threads. Dùng chung vì cấu trúc giống nhau';
+COMMENT ON TABLE comments IS 'Comments cho Posts (Instagram-Style - Flat). Tối đa 2 cấp: Comment chính (parent_comment_id IS NULL) và Reply (parent_comment_id IS NOT NULL, chỉ 1 cấp)';
 
 -- Separate Likes Tables (Best Practice: Tách riêng để có FK constraint và optimize tốt hơn)
 CREATE TABLE post_likes (
@@ -268,6 +199,7 @@ CREATE TABLE post_likes (
 );
 
 CREATE INDEX idx_post_likes_post ON post_likes(post_id);  -- Query posts được like bởi ai
+CREATE INDEX idx_post_likes_user ON post_likes(user_id);  -- Query posts user đã like
 CREATE INDEX idx_post_likes_created ON post_likes(created_at DESC);  -- Sort theo thời gian
 
 COMMENT ON TABLE post_likes IS 'Likes cho Posts (Personal + Community). Composite PK (user_id, post_id) - Junction table pattern';
@@ -283,27 +215,6 @@ CREATE INDEX idx_comment_likes_comment ON comment_likes(comment_id);  -- Query c
 CREATE INDEX idx_comment_likes_created ON comment_likes(created_at DESC);  -- Sort theo thời gian
 
 COMMENT ON TABLE comment_likes IS 'Likes cho Comments. Composite PK (user_id, comment_id) - Junction table pattern';
-
-CREATE TABLE thread_likes (
-    user_id BIGINT NOT NULL REFERENCES users(internal_id) ON DELETE CASCADE,
-    thread_id BIGINT NOT NULL REFERENCES forum_threads(id) ON DELETE CASCADE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (user_id, thread_id)  -- Composite PK: Mỗi user chỉ like 1 thread 1 lần
-);
-
-CREATE INDEX idx_thread_likes_thread ON thread_likes(thread_id);  -- Query threads được like bởi ai
-CREATE INDEX idx_thread_likes_created ON thread_likes(created_at DESC);  -- Sort theo thời gian
-
-COMMENT ON TABLE thread_likes IS 'Likes cho Forum Threads. Composite PK (user_id, thread_id) - Junction table pattern';
-
--- Add foreign key constraints to sub_forums after forum_threads and comments are created
-ALTER TABLE sub_forums 
-    ADD CONSTRAINT fk_sub_forums_last_thread 
-    FOREIGN KEY (last_thread_id) REFERENCES forum_threads(id) ON DELETE SET NULL;
-
-ALTER TABLE sub_forums 
-    ADD CONSTRAINT fk_sub_forums_last_comment 
-    FOREIGN KEY (last_comment_id) REFERENCES comments(id) ON DELETE SET NULL;
 
 CREATE TABLE saved_posts (
     user_id BIGINT NOT NULL REFERENCES users(internal_id) ON DELETE CASCADE,
@@ -348,40 +259,34 @@ CREATE INDEX idx_follows_follower ON user_follows(follower_id);  -- Lấy danh s
 CREATE INDEX idx_follows_target ON user_follows(target_id);      -- Lấy danh sách người theo dõi (Count/Notify)
 CREATE INDEX idx_follows_status ON user_follows(status);         -- Filter theo status
 CREATE INDEX idx_follows_target_pending ON user_follows(target_id, status) WHERE status = 'PENDING'; -- Lấy follow requests PENDING của user
+CREATE INDEX idx_follows_follower_accepted ON user_follows(follower_id, requested_at DESC) WHERE status = 'ACCEPTED'; -- Cursor-based pagination cho feed
 
 COMMENT ON TABLE user_follows IS 'Follow relationships với status. Public accounts: status=ACCEPTED ngay. Private accounts: status=PENDING, cần approval';
 
--- Join Requests: User xin vào Forum hoặc Community
+-- Join Requests: User xin vào Community (chỉ cho Private Communities)
 CREATE TYPE join_request_status AS ENUM ('PENDING', 'APPROVED', 'REJECTED');
 
 CREATE TABLE join_requests (
     id BIGINT PRIMARY KEY,                              -- TSID
     user_id BIGINT NOT NULL REFERENCES users(internal_id) ON DELETE CASCADE,
-    forum_id BIGINT REFERENCES forums(id) ON DELETE CASCADE,
-    community_id BIGINT REFERENCES communities(id) ON DELETE CASCADE,
+    community_id BIGINT NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
     status join_request_status DEFAULT 'PENDING',
     message TEXT,                                        -- Lời nhắn khi xin join (optional)
     reviewed_by BIGINT REFERENCES users(internal_id) ON DELETE SET NULL, -- Người duyệt (admin/moderator)
     reviewed_at TIMESTAMP WITH TIME ZONE,               -- Thời gian duyệt
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    -- Note: Business logic (join request phải có forum hoặc community) được xử lý ở Backend
-    -- Note: Unique constraints được tạo bằng partial unique index bên dưới
 );
 
 CREATE INDEX idx_join_requests_user ON join_requests(user_id);
-CREATE INDEX idx_join_requests_forum ON join_requests(forum_id) WHERE forum_id IS NOT NULL;
-CREATE INDEX idx_join_requests_community ON join_requests(community_id) WHERE community_id IS NOT NULL;
+CREATE INDEX idx_join_requests_community ON join_requests(community_id);
 CREATE INDEX idx_join_requests_status ON join_requests(status);
-CREATE INDEX idx_join_requests_forum_status ON join_requests(forum_id, status) WHERE forum_id IS NOT NULL;
-CREATE INDEX idx_join_requests_community_status ON join_requests(community_id, status) WHERE community_id IS NOT NULL;
+CREATE INDEX idx_join_requests_community_status ON join_requests(community_id, status) WHERE status = 'PENDING';
 CREATE INDEX idx_join_requests_created ON join_requests(created_at DESC);
 
--- Partial unique indexes (thay thế UNIQUE constraint với WHERE clause)
-CREATE UNIQUE INDEX uq_join_request_user_forum ON join_requests(user_id, forum_id) WHERE forum_id IS NOT NULL;
-CREATE UNIQUE INDEX uq_join_request_user_community ON join_requests(user_id, community_id) WHERE community_id IS NOT NULL;
+CREATE UNIQUE INDEX uq_join_request_user_community ON join_requests(user_id, community_id);
 
-COMMENT ON TABLE join_requests IS 'Yêu cầu tham gia Forum hoặc Community. Status: PENDING, APPROVED, REJECTED';
+COMMENT ON TABLE join_requests IS 'Yêu cầu tham gia Community (chỉ cho Private Communities). Status: PENDING, APPROVED, REJECTED';
 
 -- User Topic Follows: Users follow topics để xem posts về topic đó trong feed
 CREATE TABLE user_topic_follows (
@@ -398,7 +303,7 @@ COMMENT ON TABLE user_topic_follows IS 'Users follow topics. Dùng để build f
 
 
 -- =====================================================
--- 6. COMMUNITY MEMBERSHIP
+-- 4. COMMUNITY MEMBERSHIP
 -- =====================================================
 
 CREATE TABLE community_members (
@@ -414,43 +319,43 @@ CREATE INDEX idx_community_members_community ON community_members(community_id);
 CREATE INDEX idx_community_members_user ON community_members(user_id);
 CREATE INDEX idx_community_members_role ON community_members(role);
 CREATE INDEX idx_community_members_status ON community_members(status);
+CREATE INDEX idx_community_members_user_created ON community_members(user_id, joined_at DESC); -- Cursor-based pagination
 
-COMMENT ON TABLE community_members IS 'Membership trong Communities. Role: MEMBER, MODERATOR, ADMIN';
+COMMENT ON TABLE community_members IS 'Membership trong Communities. Role: MEMBER, MODERATOR, ADMIN. User join community để nội dung tự động xuất hiện trong Feed';
 
 
 -- =====================================================
--- 7. MEDIA/ATTACHMENTS
+-- 5. MEDIA/ATTACHMENTS (Zero Compression cho Creator)
 -- =====================================================
 
 CREATE TABLE media (
     id BIGINT PRIMARY KEY,                              -- TSID
     post_id BIGINT REFERENCES posts(id) ON DELETE CASCADE,
-    thread_id BIGINT REFERENCES forum_threads(id) ON DELETE CASCADE,
     comment_id BIGINT REFERENCES comments(id) ON DELETE CASCADE,
     user_id BIGINT NOT NULL REFERENCES users(internal_id) ON DELETE CASCADE,
     media_type VARCHAR(50) NOT NULL,                   -- IMAGE, VIDEO, GIF (type)
-    media_url TEXT NOT NULL,                            -- Media URL (media_url)
+    media_url TEXT NOT NULL,                            -- Media URL (Zero Compression cho Creator)
     thumbnail_url TEXT,                                 -- Thumbnail URL
     file_size BIGINT,                                   -- File size (bytes)
     width INTEGER,                                      -- Width
     height INTEGER,                                     -- Height
-    duration INTERVAL,                                  -- Duration (for video) - không phải NOT NULL
+    duration_seconds BIGINT,                           -- Duration (seconds) - cho video
     position INTEGER DEFAULT 0,                         -- Display order (position)
     display_order INTEGER DEFAULT 0,                    -- Display order
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-    -- Note: Business logic (media phải có post, thread, hoặc comment) được xử lý ở Backend
+    -- Note: Business logic (media phải có post hoặc comment) được xử lý ở Backend
 );
 
 CREATE INDEX idx_media_post ON media(post_id) WHERE post_id IS NOT NULL;
-CREATE INDEX idx_media_thread ON media(thread_id) WHERE thread_id IS NOT NULL;
 CREATE INDEX idx_media_comment ON media(comment_id) WHERE comment_id IS NOT NULL;
 CREATE INDEX idx_media_user ON media(user_id);
+CREATE INDEX idx_media_post_order ON media(post_id, display_order ASC) WHERE post_id IS NOT NULL; -- Sort media trong post
 
-COMMENT ON TABLE media IS 'Media attachments cho Posts, Threads, và Comments';
+COMMENT ON TABLE media IS 'Media attachments cho Posts và Comments. Zero Compression để giữ nguyên chất lượng tác phẩm (cho Creator). Watermark tự động được tích hợp';
 
 
 -- =====================================================
--- 8. NOTIFICATIONS
+-- 6. NOTIFICATIONS
 -- =====================================================
 
 CREATE TYPE notification_type AS ENUM (
@@ -464,7 +369,6 @@ CREATE TABLE notifications (
     type notification_type NOT NULL,
     actor_id BIGINT REFERENCES users(internal_id) ON DELETE SET NULL,
     post_id BIGINT REFERENCES posts(id) ON DELETE CASCADE,
-    thread_id BIGINT REFERENCES forum_threads(id) ON DELETE CASCADE,
     comment_id BIGINT REFERENCES comments(id) ON DELETE CASCADE,
     community_id BIGINT REFERENCES communities(id) ON DELETE CASCADE,
     content TEXT,
@@ -475,12 +379,13 @@ CREATE TABLE notifications (
 CREATE INDEX idx_notifications_user ON notifications(user_id);
 CREATE INDEX idx_notifications_user_unread ON notifications(user_id, is_read, created_at DESC) WHERE is_read = FALSE;
 CREATE INDEX idx_notifications_created ON notifications(created_at DESC);
+CREATE INDEX idx_notifications_user_created ON notifications(user_id, created_at DESC, id DESC); -- Cursor-based pagination
 
 COMMENT ON TABLE notifications IS 'Thông báo cho users';
 
 
 -- =====================================================
--- 9. INITIAL DATA (Featured Topics)
+-- 7. INITIAL DATA (Featured Topics)
 -- =====================================================
 
 -- Insert một số Topics mặc định (giống Threads của Meta)

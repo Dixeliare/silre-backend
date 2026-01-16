@@ -1,23 +1,30 @@
 # DATABASE DESIGN DOCUMENTATION
 
-**Project:** Hybrid Social Platform Backend  
-**Version:** 1.0  
+**Project:** Silre - Social Platform Backend  
+**Version:** 2.0  
 **Author:** LongDx  
-**Last Updated:** December 2025
+**Last Updated:** January 2026
 
 ---
 
 ## 1. TỔNG QUAN (OVERVIEW)
 
-Thiết kế database cho hệ thống Hybrid Social Platform, hỗ trợ cả **Forum** (Knowledge Base) và **Social Network** (Community & Personal Posts) với các tính năng:
+Thiết kế database cho hệ thống Social Platform, tập trung vào **Community-First Architecture** với các tính năng:
 
 - Dual-Key User Identity (TSID + NanoID)
-- Forum 4 lớp (Forum → Category → Sub-forum → Thread)
-- Social Communities & Posts
+- **Community là "Nguồn cấp":** User join community để nội dung tự động xuất hiện trong Feed
+- Social Posts (Personal & Community Posts)
+- Series System (cho Creator - gom bài đăng thành tập/chapter)
 - Topics System (giống Threads - Meta)
+- Comment System (Instagram-Style - Flat, tối đa 2 cấp)
 - NSFW Content Control
 - Interaction System (Likes, Comments, Saves, Shares, Follows)
 - Ranking Algorithm Support (Gravity Score)
+- Cursor-based Pagination Support
+
+**Triết lý thiết kế:**
+- **Loại bỏ Forum:** Không có cấu trúc Forum/Thread truyền thống để tránh làm rối UI và UX.
+- **Community-First:** Community là nguồn cấp nội dung, không phải "phòng" để user phải vào xem.
 
 ---
 
@@ -33,7 +40,7 @@ Thiết kế database cho hệ thống Hybrid Social Platform, hỗ trợ cả *
 - **Kiểu:** `VARCHAR(8-12)`
 - **Công nghệ:** Custom NanoID (bỏ ký tự dễ nhầm: l, 1, O, 0, -, _)
 - **Mục đích:** Dùng cho URL thân thiện (slug.public_id)
-- **Ví dụ:** `/c/yeu-meo.Xy9z` → Query bằng `Xy9z`
+- **Ví dụ:** `/p/yeu-meo.Xy9z` → Query bằng `Xy9z`
 
 ---
 
@@ -65,120 +72,54 @@ Bảng người dùng với Dual-Key Identity.
 
 ---
 
-### 3.2. Forum System (4 Layers: Forum → Category → Sub-forum → Thread)
-
-#### `forums`
-Lớp Forum ngoài cùng - Cho phép nhiều forum độc lập trong cùng 1 app.
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | BIGINT (PK) | TSID |
-| `name` | VARCHAR(255) | Tên forum (VD: "Voz", "SpringBoot Việt Nam") |
-| `slug` | VARCHAR(255) | URL slug (**không unique**, có thể trùng - chỉ dùng cho SEO) |
-| `public_id` | VARCHAR(10) UNIQUE | Short ID cho URL (slug.public_id) - **Dùng để query DB** |
-| `description` | TEXT | Mô tả forum |
-| `owner_id` | BIGINT (FK) | Reference to `users` (Admin tạo forum) |
-| `is_public` | BOOLEAN | Public hoặc Private forum |
-| `member_count` | INTEGER | Số thành viên (denormalized) |
-| `thread_count` | INTEGER | Số threads (denormalized) |
-| `category_count` | INTEGER | Số categories (denormalized) |
-| `created_at`, `updated_at` | TIMESTAMP | Timestamps |
-
-**Indexes:**
-- `idx_forums_slug` - Index cho slug (SEO)
-- `idx_forums_public_id` - **Tìm bằng Short ID (query thực tế)**
-
-**Note:** 
-- Cho phép nhiều forum độc lập (Voz, SpringBoot VN, Java Community, etc.) trong cùng 1 app.
-- Slug không unique vì chỉ dùng để SEO. Query thực tế dùng `public_id` (nhất quán với `communities`).
-
-#### `categories`
-Danh mục lớn trong Forum (VD: Công nghệ, Đời sống).
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | BIGINT (PK) | TSID |
-| `forum_id` | BIGINT (FK) | Reference to `forums` |
-| `name` | VARCHAR(255) | Tên danh mục |
-| `slug` | VARCHAR(255) | URL slug (unique trong forum, không phải global) |
-| `description` | TEXT | Mô tả |
-| `display_order` | INTEGER | Thứ tự hiển thị trong forum |
-
-**Constraint:** `UNIQUE(forum_id, slug)` - Slug unique trong forum, không phải global.
-
-**Indexes:**
-- `idx_categories_forum` - Lấy categories của forum
-- `idx_categories_forum_order` - Sắp xếp categories trong forum
-
-#### `sub_forums`
-Chủ đề cụ thể trong Category (VD: Java Backend, Chuyện trò linh tinh).
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | BIGINT (PK) | TSID |
-| `category_id` | BIGINT (FK) | Reference to `categories` |
-| `name` | VARCHAR(255) | Tên sub-forum |
-| `slug` | VARCHAR(255) | URL slug (unique trong category) |
-| `description` | TEXT | Mô tả |
-| `display_order` | INTEGER | Thứ tự hiển thị (nếu dùng manual sorting) |
-| `last_activity_at` | TIMESTAMP | Activity gần nhất (comment/thread mới trong sub-forum) |
-| `last_thread_id` | BIGINT (FK, NULL) | Thread có activity gần nhất (để jump đến khi click) |
-| `last_comment_id` | BIGINT (FK, NULL) | Comment gần nhất (nếu activity là comment, để jump đến) |
-| `last_activity_by_user_id` | BIGINT (FK, NULL) | User tạo activity gần nhất (hiển thị tên như Voz) |
-
-**Constraint:** `UNIQUE(category_id, slug)` - Slug unique trong category.
-
-**Indexes:**
-- `idx_sub_forums_last_activity` - Sort theo activity (DESC)
-- `idx_sub_forums_category_activity` - Sort sub-forums trong category theo activity
-- `idx_sub_forums_last_thread` - Join với thread gần nhất
-- `idx_sub_forums_last_comment` - Join với comment gần nhất
-
-**Note:** 
-- `last_activity_at`, `last_thread_id`, `last_comment_id`, `last_activity_by_user_id` được cập nhật tự động khi có comment mới hoặc thread mới.
-- Query: `ORDER BY last_activity_at DESC` để hiển thị sub-forum có activity gần nhất lên đầu.
-- Hiển thị như Voz: "Last activity: '[thread title]... 10 minutes ago - [user name]'"
-- Khi click vào sub-forum → Jump đến thread/comment gần nhất (dùng `last_thread_id` hoặc `last_comment_id`)
-
-#### `forum_threads`
-Bài thảo luận sâu (Bắt buộc có Tiêu đề + Nội dung).
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | BIGINT (PK) | TSID |
-| `sub_forum_id` | BIGINT (FK) | Reference to `sub_forums` |
-| `author_id` | BIGINT (FK) | Reference to `users` |
-| `title` | VARCHAR(500) | **Bắt buộc** |
-| `content` | TEXT | **Bắt buộc** |
-| `public_id` | VARCHAR(12) UNIQUE | Short ID cho URL |
-| `slug` | VARCHAR(350) | Slug từ title (SEO) |
-| `view_count` | INTEGER | Số lượt xem |
-| `last_activity_at` | TIMESTAMP | Thời gian hoạt động cuối |
-
-**Indexes:**
-- `idx_forum_threads_last_activity` - Sắp xếp theo hoạt động
-- `idx_forum_threads_public_id` - Tìm bằng Short ID
-
----
-
-### 3.3. Social System
+### 3.2. Community System (Community-First Architecture)
 
 #### `communities`
-Nhóm cộng đồng (Groups).
+Nhóm cộng đồng - **Community là "Nguồn cấp"**, không phải "phòng" để user phải vào xem.
 
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | BIGINT (PK) | TSID |
 | `name` | VARCHAR(255) | Tên nhóm |
-| `slug` | VARCHAR(255) | URL slug (**không unique**, có thể trùng) |
+| `slug` | VARCHAR(255) | URL slug (**không unique**, có thể trùng - chỉ dùng cho SEO) |
 | `public_id` | VARCHAR(10) UNIQUE | Short ID cho URL (query bằng cái này) |
 | `description` | TEXT | Mô tả |
 | `owner_id` | BIGINT (FK) | Reference to `users` |
+| `is_private` | BOOLEAN | Private community (cần approval khi join, default: FALSE) |
+| `is_searchable` | BOOLEAN | Có thể search/discover (default: TRUE) |
 | `is_nsfw` | BOOLEAN | NSFW flag (default: FALSE) |
-| `member_count` | INTEGER | Số thành viên |
-| `post_count` | INTEGER | Số bài viết |
+| `member_count` | INTEGER | Số thành viên (denormalized) |
+| `post_count` | INTEGER | Số bài viết (denormalized) |
+| `created_at`, `updated_at` | TIMESTAMP | Timestamps |
 
-**Note:** Slug không unique vì chỉ dùng để SEO. Query thực tế dùng `public_id`.
+**Indexes:**
+- `idx_communities_public_id` - Tìm bằng Short ID
+- `idx_communities_slug` - SEO
+- `idx_communities_is_searchable` - Filter searchable communities
+
+**Note:** 
+- Slug không unique vì chỉ dùng để SEO. Query thực tế dùng `public_id`.
+- **Community là "Nguồn cấp":** Khi user join community, nội dung từ community đó sẽ tự động xuất hiện trong Feed.
+
+#### `community_members`
+Thành viên của communities.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `community_id` | BIGINT (FK) | Reference to `communities` |
+| `user_id` | BIGINT (FK) | Reference to `users` |
+| `role` | VARCHAR(50) | MEMBER, MODERATOR, ADMIN |
+| `joined_at` | TIMESTAMP | Thời gian tham gia |
+
+**Primary Key:** `(community_id, user_id)`.
+
+**Indexes:**
+- `idx_community_members_user` - Lấy communities của user (để build Feed)
+- `idx_community_members_community` - Lấy members của community
+
+---
+
+### 3.3. Posts System
 
 #### `posts`
 Bài viết Social (Personal hoặc Community Post).
@@ -188,10 +129,12 @@ Bài viết Social (Personal hoặc Community Post).
 | `id` | BIGINT (PK) | TSID |
 | `author_id` | BIGINT (FK) | Reference to `users` |
 | `community_id` | BIGINT (FK, NULL) | Reference to `communities` (NULL = Personal Post) |
+| `series_id` | BIGINT (FK, NULL) | Reference to `series` (cho Creator - gom bài thành tập/chapter) |
 | `topic_id` | BIGINT (FK, NULL) | Reference to `topics` (CHỈ dùng cho Personal Posts, NULL = post không có topic) |
+| `title` | VARCHAR(255) | Tiêu đề (optional cho social posts) |
 | `content` | TEXT | Nội dung bài viết |
 | `public_id` | VARCHAR(12) UNIQUE | Short ID cho URL |
-| `slug` | VARCHAR(350) | Slug (optional, SEO) |
+| `slug` | VARCHAR(350) | Slug (auto-generated từ title/content, SEO) |
 | `is_nsfw` | BOOLEAN | NSFW flag (kế thừa từ community) |
 
 **Stats cho Ranking Algorithm:**
@@ -210,9 +153,8 @@ Bài viết Social (Personal hoặc Community Post).
 **Logic:**
 - `community_id IS NULL` → **Personal Post**
 - `community_id IS NOT NULL` → **Community Post**
+- `series_id IS NOT NULL` → **Series Post** (cho Creator)
 - `topic_id` → CHỈ dùng cho Personal Posts (có thể NULL nếu post không có topic)
-- **Mỗi post chỉ có 1 topic** (one-to-many: topic → posts)
-- **Post không có topic** → `topic_id IS NULL` (không cần bảng riêng)
 
 **Constraint:**
 - `chk_personal_post_topic`: Đảm bảo `topic_id` chỉ dùng cho Personal Posts (`community_id IS NULL`)
@@ -220,13 +162,108 @@ Bài viết Social (Personal hoặc Community Post).
 **Indexes:**
 - `idx_posts_viral_score` - Sắp xếp theo điểm viral
 - `idx_posts_community_created` - Lấy bài trong community
+- `idx_posts_author_created` - Lấy bài của user
+- `idx_posts_series` - Lấy bài trong series
+- `idx_posts_created_at` - Cursor-based pagination
+
+#### `series`
+Series cho Creator - Gom các bài đăng thành tập/chapter.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | BIGINT (PK) | TSID |
+| `creator_id` | BIGINT (FK) | Reference to `users` |
+| `title` | VARCHAR(255) | Tên series |
+| `description` | TEXT | Mô tả series |
+| `public_id` | VARCHAR(12) UNIQUE | Short ID cho URL |
+| `slug` | VARCHAR(350) | Slug (SEO) |
+| `post_count` | INTEGER | Số bài trong series (denormalized) |
+| `created_at`, `updated_at` | TIMESTAMP | Timestamps |
+
+**Indexes:**
+- `idx_series_creator` - Lấy series của creator
+- `idx_series_public_id` - Tìm bằng Short ID
 
 ---
 
-### 3.4. Interaction System
+### 3.4. Comment System (Instagram-Style - Flat)
+
+#### `comments`
+Bình luận - **Tối đa 2 cấp** (Comment chính và Reply).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | BIGINT (PK) | TSID |
+| `post_id` | BIGINT (FK) | Reference to `posts` |
+| `author_id` | BIGINT (FK) | Reference to `users` |
+| `parent_comment_id` | BIGINT (FK, NULL) | Reference to `comments` (NULL = Comment chính, NOT NULL = Reply) |
+| `content` | TEXT | Nội dung comment |
+| `likes_count` | INTEGER | Số lượt like comment (denormalized từ `comment_likes`) |
+| `created_at`, `updated_at` | TIMESTAMP | Timestamps |
+
+**Logic:**
+- `parent_comment_id IS NULL` → **Comment chính**
+- `parent_comment_id IS NOT NULL` → **Reply** (chỉ 1 cấp, không có nested reply)
+
+**Indexes:**
+- `idx_comments_post_created` - Lấy comments của post (cursor-based pagination)
+- `idx_comments_parent` - Lấy replies của comment
+- `idx_comments_author` - Lấy comments của user
+
+**Note:** 
+- UI phẳng, không thụt lề sâu như Reddit/Threads.
+- Khi bấm "Xem thêm", reply được load tại chỗ để user scroll liên tục.
+
+---
+
+### 3.5. Topics System (Giống Threads - Meta)
+
+#### `topics`
+Topics được gán cho Posts (giống Threads của Meta).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | BIGINT (PK) | TSID |
+| `name` | VARCHAR(255) UNIQUE | Tên topic (e.g., "Technology", "Hà Nội") |
+| `slug` | VARCHAR(255) UNIQUE | URL slug (e.g., "technology", "hanoi") |
+| `description` | TEXT | Mô tả topic |
+| `image_url` | TEXT | Ảnh đại diện topic (optional) |
+| `post_count` | INTEGER | Số posts có topic này (denormalized) |
+| `follower_count` | INTEGER | Số users follow topic này (denormalized) |
+| `is_featured` | BOOLEAN | Topic nổi bật (admin feature) |
+| `created_at`, `updated_at` | TIMESTAMP | Timestamps |
+
+**Indexes:**
+- `idx_topics_slug` - Tìm bằng slug
+- `idx_topics_follower_count` - Sort topics theo popularity
+
+**Note:** 
+- Topics giống Threads - users có thể follow topics để xem posts về topic đó trong feed
+- **Mỗi post chỉ có 1 topic** (one-to-many: topic → posts)
+- **Post không có topic** → `topic_id IS NULL` trong bảng `posts`
+- **CHỈ dùng cho Personal Posts** (`community_id IS NULL`). Community Posts **KHÔNG** dùng topics
+
+#### `user_topic_follows`
+Users follow topics để xem posts về topic đó trong feed.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `user_id` | BIGINT (FK) | Reference to `users` |
+| `topic_id` | BIGINT (FK) | Reference to `topics` |
+| `created_at` | TIMESTAMP | Thời gian follow |
+
+**Primary Key:** `(user_id, topic_id)`.
+
+**Use Case:** 
+- User follow topic "Technology" → Feed sẽ hiển thị posts có topic "Technology"
+- Giống Threads: Follow topics để personalize feed
+
+---
+
+### 3.6. Interaction System
 
 #### `post_likes`
-Likes cho Posts (Personal + Community). **Composite Primary Key** pattern cho junction table.
+Likes cho Posts. **Composite Primary Key** pattern cho junction table.
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -238,9 +275,8 @@ Likes cho Posts (Personal + Community). **Composite Primary Key** pattern cho ju
 
 **Indexes:**
 - `idx_post_likes_post` - Query posts được like bởi ai
+- `idx_post_likes_user` - Query posts user đã like
 - `idx_post_likes_created` - Sort theo thời gian
-
-**Note:** Không cần `id` riêng vì đây là junction table, không có bảng nào reference đến `post_likes.id`. Composite PK pattern tiết kiệm storage và đơn giản hơn.
 
 #### `comment_likes`
 Likes cho Comments. **Composite Primary Key** pattern cho junction table.
@@ -256,48 +292,6 @@ Likes cho Comments. **Composite Primary Key** pattern cho junction table.
 **Indexes:**
 - `idx_comment_likes_comment` - Query comments được like bởi ai
 - `idx_comment_likes_created` - Sort theo thời gian
-
-#### `thread_likes`
-Likes cho Forum Threads. **Composite Primary Key** pattern cho junction table.
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `user_id` | BIGINT (FK, PK) | Reference to `users` |
-| `thread_id` | BIGINT (FK, PK) | Reference to `forum_threads` |
-| `created_at` | TIMESTAMP | Thời gian like |
-
-**Primary Key:** `(user_id, thread_id)` - Composite PK đảm bảo mỗi user chỉ like 1 thread 1 lần.
-
-**Indexes:**
-- `idx_thread_likes_thread` - Query threads được like bởi ai
-- `idx_thread_likes_created` - Sort theo thời gian
-
-**Design Decision:** Tách riêng 3 bảng likes thay vì unified table để:
-- Có Foreign Key constraint đầy đủ (referential integrity)
-- Dễ optimize index cho từng loại
-- Dễ partition riêng (ví dụ: partition `post_likes` theo tháng khi scale)
-- Type-safe hơn
-
-#### `comments`
-Bình luận unified (dùng chung cho Posts và Threads).
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | BIGINT (PK) | TSID |
-| `post_id` | BIGINT (FK, NULL) | Reference to `posts` |
-| `thread_id` | BIGINT (FK, NULL) | Reference to `forum_threads` |
-| `author_id` | BIGINT (FK) | Reference to `users` |
-| `parent_comment_id` | BIGINT (FK, NULL) | Reference to `comments` (nested/reply) |
-| `content` | TEXT | Nội dung comment |
-| `likes_count` | INTEGER | Số lượt like comment (denormalized từ `comment_likes`) |
-
-**Constraint:** `CHECK (post_id IS NOT NULL XOR thread_id IS NOT NULL)` - Chỉ comment 1 trong 2.
-
-**Design Decision:** Dùng chung 1 bảng comments vì:
-- Comments có cấu trúc giống nhau (content, author, timestamps, nested)
-- Theo thiết kế của Facebook, Twitter, Reddit - họ đều dùng unified comments
-- Đơn giản hơn, dễ maintain
-- Query tổng hợp dễ dàng (tất cả comments của user)
 
 #### `saved_posts`
 Bookmark bài viết (trọng số cao: 8 điểm).
@@ -352,121 +346,59 @@ Quan hệ follow giữa users (hỗ trợ cả Public và Private accounts).
 - Query feed chỉ lấy `status = ACCEPTED`
 
 #### `join_requests`
-Yêu cầu tham gia Forum hoặc Community.
+Yêu cầu tham gia Community (chỉ cho Private Communities).
 
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | BIGINT (PK) | TSID |
 | `user_id` | BIGINT (FK) | Reference to `users` (người xin join) |
-| `forum_id` | BIGINT (FK, NULL) | Reference to `forums` |
-| `community_id` | BIGINT (FK, NULL) | Reference to `communities` |
+| `community_id` | BIGINT (FK) | Reference to `communities` |
 | `status` | ENUM | PENDING, APPROVED, REJECTED |
 | `message` | TEXT | Lời nhắn khi xin join (optional) |
 | `reviewed_by` | BIGINT (FK, NULL) | Reference to `users` (người duyệt) |
 | `reviewed_at` | TIMESTAMP | Thời gian duyệt |
 | `created_at`, `updated_at` | TIMESTAMP | Timestamps |
 
-**Constraint:** `CHECK (forum_id IS NOT NULL XOR community_id IS NOT NULL)` - Chỉ xin vào Forum HOẶC Community.
-
 **Unique:** 
-- `(user_id, forum_id)` - Mỗi user chỉ xin vào 1 forum 1 lần
 - `(user_id, community_id)` - Mỗi user chỉ xin vào 1 community 1 lần
 
 **Indexes:**
-- `idx_join_requests_forum_status` - Lấy requests PENDING của forum
 - `idx_join_requests_community_status` - Lấy requests PENDING của community
 - `idx_join_requests_user` - Lấy requests của user
 
 **Workflow:**
 1. User tạo request với `status = PENDING`
 2. Admin/Moderator duyệt → `status = APPROVED` hoặc `REJECTED`
-3. Khi APPROVED → Tự động thêm vào `forum_members` hoặc `community_members`
-
----
-
-### 3.5. Topics System (Giống Threads - Meta)
-
-#### `topics`
-Topics được gán cho Posts (giống Threads của Meta).
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | BIGINT (PK) | TSID |
-| `name` | VARCHAR(255) UNIQUE | Tên topic (e.g., "Technology", "Hà Nội") |
-| `slug` | VARCHAR(255) UNIQUE | URL slug (e.g., "technology", "hanoi") |
-| `description` | TEXT | Mô tả topic |
-| `image_url` | TEXT | Ảnh đại diện topic (optional) |
-| `post_count` | INTEGER | Số posts có topic này (denormalized) |
-| `follower_count` | INTEGER | Số users follow topic này (denormalized) |
-| `is_featured` | BOOLEAN | Topic nổi bật (admin feature) |
-| `created_at`, `updated_at` | TIMESTAMP | Timestamps |
-
-**Indexes:**
-- `idx_topics_slug` - Tìm bằng slug
-- `idx_topics_follower_count` - Sort topics theo popularity
-
-**Note:** 
-- Topics giống Threads - users có thể follow topics để xem posts về topic đó trong feed
-- **Mỗi post chỉ có 1 topic** (one-to-many: topic → posts)
-- **Post không có topic** → `topic_id IS NULL` trong bảng `posts` (không cần bảng riêng)
-- **CHỈ dùng cho Personal Posts** (`community_id IS NULL`). Community Posts **KHÔNG** dùng topics
-
-**Relationship:**
-- `posts.topic_id` → FK to `topics.id` (nullable)
-- Constraint `chk_personal_post_topic` đảm bảo chỉ Personal Posts mới có thể có topic
-
-#### `user_topic_follows`
-Users follow topics để xem posts về topic đó trong feed.
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `user_id` | BIGINT (FK) | Reference to `users` |
-| `topic_id` | BIGINT (FK) | Reference to `topics` |
-| `created_at` | TIMESTAMP | Thời gian follow |
-
-**Primary Key:** `(user_id, topic_id)`.
-
-**Use Case:** 
-- User follow topic "Technology" → Feed sẽ hiển thị posts có topic "Technology"
-- Giống Threads: Follow topics để personalize feed
-
----
-
-### 3.6. Community Membership
-
-#### `community_members`
-Thành viên của communities.
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `community_id` | BIGINT (FK) | Reference to `communities` |
-| `user_id` | BIGINT (FK) | Reference to `users` |
-| `role` | VARCHAR(50) | MEMBER, MODERATOR, ADMIN |
-| `joined_at` | TIMESTAMP | Thời gian tham gia |
-
-**Primary Key:** `(community_id, user_id)`.
+3. Khi APPROVED → Tự động thêm vào `community_members`
 
 ---
 
 ### 3.7. Media/Attachments
 
 #### `media`
-Ảnh/Video đính kèm (cho Posts hoặc Threads).
+Ảnh/Video đính kèm cho Posts (Zero Compression cho Creator).
 
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | BIGINT (PK) | TSID |
-| `post_id` | BIGINT (FK, NULL) | Reference to `posts` |
-| `thread_id` | BIGINT (FK, NULL) | Reference to `forum_threads` |
+| `post_id` | BIGINT (FK) | Reference to `posts` |
 | `user_id` | BIGINT (FK) | Reference to `users` |
 | `media_type` | VARCHAR(50) | IMAGE, VIDEO, GIF |
-| `media_url` | TEXT | URL ảnh/video |
+| `media_url` | TEXT | URL ảnh/video (Zero Compression) |
 | `thumbnail_url` | TEXT | URL thumbnail |
 | `file_size` | BIGINT | Kích thước file |
 | `width`, `height` | INTEGER | Kích thước |
+| `duration_seconds` | BIGINT | Duration (seconds) - cho video |
 | `display_order` | INTEGER | Thứ tự hiển thị |
+| `created_at` | TIMESTAMP | Timestamps |
 
-**Constraint:** `CHECK (post_id IS NOT NULL XOR thread_id IS NOT NULL)` - Chỉ attach 1 trong 2.
+**Indexes:**
+- `idx_media_post` - Lấy media của post
+- `idx_media_user` - Lấy media của user
+
+**Note:** 
+- **Zero Compression:** Không nén ảnh để giữ nguyên chất lượng tác phẩm (cho Creator).
+- **Watermark:** Tích hợp watermark tự động để bảo vệ bản quyền.
 
 ---
 
@@ -481,13 +413,14 @@ Thông báo cho users.
 | `user_id` | BIGINT (FK) | Reference to `users` |
 | `type` | ENUM | LIKE, COMMENT, REPLY, FOLLOW, MENTION, COMMUNITY_INVITE, SYSTEM |
 | `actor_id` | BIGINT (FK, NULL) | Reference to `users` (người thực hiện) |
-| `post_id`, `thread_id`, `comment_id`, `community_id` | BIGINT (FK, NULL) | Reference tùy context |
+| `post_id`, `comment_id`, `community_id` | BIGINT (FK, NULL) | Reference tùy context |
 | `content` | TEXT | Nội dung thông báo |
 | `is_read` | BOOLEAN | Đã đọc chưa |
 | `created_at` | TIMESTAMP | Thời gian tạo |
 
 **Indexes:**
 - `idx_notifications_user_unread` - Lấy thông báo chưa đọc
+- `idx_notifications_user_created` - Cursor-based pagination
 
 ---
 
@@ -496,53 +429,54 @@ Thông báo cho users.
 ### 4.1. User-Centric
 ```
 users (1) ──< (N) posts
-users (1) ──< (N) forum_threads
 users (1) ──< (N) comments
-users (1) ──< (N) forums (owner)          -- Admin tạo forum
 users (1) ──< (N) communities (owner)
+users (1) ──< (N) series (creator)
 users (N) ──< (N) user_follows (follower/target)
 users (N) ──< (N) community_members
-users (N) ──< (N) join_requests           -- User xin vào forum/community
-users (N) ──< (N) user_topic_follows ──< (N) topics  -- User follow topics
+users (N) ──< (N) user_topic_follows ──< (N) topics
 ```
 
-### 4.2. Forum Hierarchy
-```
-forums (1) ──< (N) categories (1) ──< (N) sub_forums (1) ──< (N) forum_threads
-```
-
-**Ví dụ:**
-- Forum "Voz" (id: 1)
-  - Category "Công nghệ" (forum_id: 1)
-    - Sub-forum "Java Backend" (category_id: 1)
-      - Thread "Hướng dẫn Spring Boot" (sub_forum_id: 1)
-  - Category "Đời sống" (forum_id: 1)
-    - Sub-forum "Chuyện trò linh tinh" (category_id: 2)
-      - Thread "Hôm nay trời đẹp" (sub_forum_id: 2)
-
-### 4.3. Social Network
+### 4.2. Community-First Architecture
 ```
 communities (1) ──< (N) posts
+communities (1) ──< (N) community_members
+```
+
+**Flow:**
+- User join community → Nội dung từ community tự động xuất hiện trong Feed
+- Community là "Nguồn cấp", không phải "phòng" để user phải vào xem
+
+### 4.3. Posts & Series
+```
+series (1) ──< (N) posts
 topics (1) ──< (N) posts (topic_id)  -- One-to-Many: Mỗi post chỉ có 1 topic
 users (N) ──< (N) user_topic_follows ──< (N) topics
 ```
 
 **Topics Flow:**
 - **Mỗi post chỉ có 1 topic** (one-to-many: topic → posts)
-- **Post không có topic** → `topic_id IS NULL` (không cần bảng riêng)
+- **Post không có topic** → `topic_id IS NULL`
 - **CHỈ Personal Posts** (`community_id IS NULL`) mới có thể có topic
 - Users follow topics → Feed hiển thị posts từ topics đã follow (giống Threads)
 
-### 4.4. Interactions
+### 4.4. Comment System (Instagram-Style)
+```
+posts (1) ──< (N) comments
+comments (1) ──< (N) comments (parent_comment_id)  -- Tối đa 1 cấp (Reply)
+```
+
+**Structure:**
+- Comment chính: `parent_comment_id IS NULL`
+- Reply: `parent_comment_id IS NOT NULL` (chỉ 1 cấp)
+
+### 4.5. Interactions
 ```
 posts (1) ──< (N) post_likes
 posts (1) ──< (N) comments
 posts (1) ──< (N) saved_posts
 posts (1) ──< (N) shares
 comments (1) ──< (N) comment_likes
-comments (1) ──< (N) comments (nested/reply)
-forum_threads (1) ──< (N) thread_likes
-forum_threads (1) ──< (N) comments
 ```
 
 ---
@@ -551,7 +485,7 @@ forum_threads (1) ──< (N) comments
 
 ### 5.1. Primary Indexes
 - Hầu hết bảng dùng `BIGINT` PK (TSID) → B-Tree Index tự động
-- Junction tables (likes, saves, shares) dùng **Composite Primary Key** → Index tự động trên cả 2 columns
+- Junction tables (likes, saves) dùng **Composite Primary Key** → Index tự động trên cả 2 columns
 
 ### 5.2. Foreign Key Indexes
 - Tất cả FK đều có index để tối ưu JOIN
@@ -563,12 +497,17 @@ forum_threads (1) ──< (N) comments
 
 ### 5.4. Ranking Indexes
 - `viral_score DESC` → Sắp xếp bài viết hot
-- `last_activity_at DESC` → Sắp xếp threads hot
 - `created_at DESC` → Sắp xếp mới nhất
 
-### 5.5. Composite Indexes
-- `(community_id, created_at DESC)` → Lấy bài trong community
-- `(user_id, is_read, created_at DESC)` → Lấy thông báo chưa đọc
+### 5.5. Cursor-Based Pagination Indexes
+- `(post_id, created_at DESC, id DESC)` → Comments của post
+- `(community_id, created_at DESC, id DESC)` → Posts của community
+- `(author_id, created_at DESC, id DESC)` → Posts của user
+
+### 5.6. Feed Building Indexes
+- `(follower_id, status, created_at DESC)` → Following feed
+- `(user_id, created_at DESC)` → Joined communities
+- `(user_id, created_at DESC)` → Followed topics
 
 ---
 
@@ -577,58 +516,51 @@ forum_threads (1) ──< (N) comments
 ### 6.1. Unique Constraints
 - `users.public_id` → Unique (NanoID)
 - `users.email` → Unique
-- `forums.public_id` → Unique (Short ID - dùng để query)
 - `communities.public_id` → Unique (Short ID)
 - `posts.public_id` → Unique (Short ID)
-- `forum_threads.public_id` → Unique (Short ID)
+- `series.public_id` → Unique (Short ID)
 - `topics.name` → Unique
 - `topics.slug` → Unique
 - `(user_id, post_id)` trong `post_likes` → Composite Primary Key
 - `(user_id, comment_id)` trong `comment_likes` → Composite Primary Key
-- `(user_id, thread_id)` trong `thread_likes` → Composite Primary Key
 - `(user_id, post_id)` trong `saved_posts` → Unique
 - `(follower_id, target_id)` trong `user_follows` → Unique
 - `(user_id, topic_id)` trong `user_topic_follows` → Unique
-- `posts.topic_id` → FK to `topics.id` (nullable, chỉ cho Personal Posts)
+- `(community_id, user_id)` trong `community_members` → Unique
 
 ### 6.2. Check Constraints
-- `comments`: Chỉ comment Post HOẶC Thread (XOR)
-- `media`: Chỉ attach Post HOẶC Thread (XOR)
-- `join_requests`: Chỉ xin vào Forum HOẶC Community (XOR)
-- `user_follows`: Không được follow chính mình (`follower_id != target_id`)
+- `comments`: `parent_comment_id IS NULL OR parent_comment_id != id` (không reply chính mình)
+- `user_follows`: `follower_id != target_id` (không follow chính mình)
+- `posts`: `topic_id IS NULL OR community_id IS NULL` (chỉ Personal Posts mới có topic)
 
 ### 6.3. Foreign Key Constraints
 - Tất cả FK đều có `ON DELETE CASCADE` hoặc `ON DELETE SET NULL` tùy logic nghiệp vụ
 
 ---
 
-## 7. TRIGGERS & FUNCTIONS
+## 7. CURSOR-BASED PAGINATION
 
-### 7.1. Auto-update Timestamps
-Function `update_updated_at_column()` tự động cập nhật `updated_at` khi có UPDATE.
+### 7.1. Feed Pagination
+- **Cursor:** `(created_at, id)` - Dùng timestamp + ID để đảm bảo unique và stable
+- **Query:** `WHERE (created_at, id) < (cursor_created_at, cursor_id) ORDER BY created_at DESC, id DESC LIMIT 20`
 
-**Applied to:**
-- `users`
-- `posts`
-- `communities`
-- `comments`
-- `forum_threads`
-- `forums`
-- `join_requests`
-- `topics`
+### 7.2. Comment Pagination
+- **Cursor:** `(created_at, id)` - Tương tự Feed
+- **Load Reply tại chỗ:** Khi bấm "Xem thêm", query `WHERE parent_comment_id = ? ORDER BY created_at ASC`
 
 ---
 
-## 8. INITIAL DATA
+## 8. REDIS INTEGRATION
 
-### 8.1. Featured Topics
-File migration tự động insert 6 Featured Topics mặc định (giống Threads):
-- Technology
-- News
-- Entertainment
-- Sports
-- Lifestyle
-- Education
+### 8.1. Tags/Mentions Management
+- **Real-time Tags:** Lưu tags đang trending trong Redis ZSET
+- **Mentions:** Lưu mentions (@username) để notify user ngay lập tức
+- **Cache:** Cache kết quả search tags/mentions để giảm tải DB
+
+### 8.2. Feed Pools (Gravity Algorithm)
+- **Viral Pool:** Redis ZSET lưu `post_id` với `viral_score`
+- **Following Pool:** Redis SET lưu `post_id` từ users đang follow
+- **Community Pool:** Redis SET lưu `post_id` từ joined communities
 
 ---
 
@@ -643,7 +575,7 @@ Khi đạt 1M+ users:
 - 1 Master (Write) + 2 Slaves (Read) cho PostgreSQL
 
 ### 9.3. Full-text Search
-- Tích hợp Elasticsearch/Meilisearch cho full-text search phức tạp
+- Tích hợp Meilisearch cho full-text search phức tạp
 
 ---
 
@@ -654,9 +586,10 @@ Khi đạt 1M+ users:
 3. **Slug không unique:** Chỉ dùng cho SEO, query thực tế dùng `public_id`
 4. **Stats denormalization:** Lưu stats trong `posts` để tránh COUNT() mỗi lần query
 5. **Composite PK:** Dùng cho bảng Many-to-Many và bảng quan hệ (saved_posts, user_follows)
+6. **Community-First:** Community là "Nguồn cấp", không phải "phòng" để user phải vào xem
+7. **Comment Flat:** Tối đa 2 cấp (Comment chính và Reply), không nested sâu như Reddit
+8. **Cursor-based Pagination:** Dùng cho Feed và Comment để không lag khi scroll
 
 ---
 
 *End of Database Design Documentation.*
-
- 

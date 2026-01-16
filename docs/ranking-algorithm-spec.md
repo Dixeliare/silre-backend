@@ -1,8 +1,8 @@
 # TECHNICAL SPECIFICATION: HEART-BASED RANKING (GRAVITY ALGORITHM)
 
-**Project:** Hybrid Social Platform  
+**Project:** Silre - Social Platform  
 **Module:** Feed Service & Recommendation (Python Worker)  
-**Version:** 3.0 (Hybrid Architecture)  
+**Version:** 2.0 (Community-First Architecture)  
 **Status:** Approved
 
 ---
@@ -89,17 +89,23 @@ def calculate_viral_score(post_stats, created_at):
 
 ---
 
-## 3. CHIẾN LƯỢC FEED (THE 70-20-10 RULE)
+## 3. CHIẾN LƯỢC FEED (ADAPTIVE ALGORITHM)
 
-Newsfeed không hiển thị theo thời gian thuần túy mà được "trộn" (Mix) theo tỷ lệ cố định để tối ưu trải nghiệm khám phá.
+Newsfeed sử dụng thuật toán tự thích nghi dựa trên hành vi người dùng:
+- **Lướt nhanh:** Ưu tiên ảnh đẹp, nội dung giải trí (Dopamine)
+- **Dừng lại lâu/Bấm comment:** Chuyển sang "Talk mode", đẩy các bài có thảo luận sôi nổi
 
-Khi User gọi API `GET /feed` (Page Size = 10 items):
+**Nguồn cấp Feed:**
+- **Discovery (Viral):** Bài viết điểm cao từ người lạ/cộng đồng viral
+- **Following:** Bài viết từ bạn bè đang follow
+- **Joined Communities:** Bài viết từ các cộng đồng đã tham gia
+- **Followed Topics:** Bài viết từ các topics đã follow
 
-| Nguồn (Source) | Tỷ lệ | Redis Key (ZSET) | Mô tả |
-| :--- | :--- | :--- | :--- |
-| **Discovery (Viral)** | **70%** (7 items) | `global:viral:pool` | Bài viết điểm cao từ người lạ/cộng đồng viral. |
-| **Following** | **20%** (2 items) | `user:following:{uid}` | Bài viết từ bạn bè/nhóm đã tham gia (Chỉ lấy bài chất lượng). |
-| **Forum Highlights** | **10%** (1 items) | `forum:hot:pool` | Các Thread đang tranh luận "sôi nổi" bên phân hệ Forum. |
+**Redis Keys:**
+- `global:viral:pool` (ZSET) - Bài viết viral toàn cục
+- `user:following:{uid}` (SET) - Bài viết từ following
+- `user:communities:{uid}` (SET) - Bài viết từ joined communities
+- `user:topics:{uid}` (SET) - Bài viết từ followed topics
 
 ---
 
@@ -118,14 +124,15 @@ Khi User gọi API `GET /feed` (Page Size = 10 items):
     *   `ZADD global:viral:pool <score> <post_id>`.
 
 ### 4.2. Read Path (Khi User lướt Feed)
-1.  **Request:** User gọi `GET /api/feed`.
+1.  **Request:** User gọi `GET /api/feed` với cursor-based pagination.
 2.  **Java Feed Service:**
-    *   Lấy 7 IDs từ `global:viral:pool`.
-    *   Lấy 2 IDs từ `user:following:{uid}`.
-    *   Lấy 1 ID từ `forum:hot:pool`.
-3.  **Mixing:** Trộn ngẫu nhiên (Shuffle) danh sách 10 IDs này.
+    *   Lấy IDs từ `global:viral:pool` (Discovery - ưu tiên cao).
+    *   Lấy IDs từ `user:following:{uid}` (Following).
+    *   Lấy IDs từ `user:communities:{uid}` (Joined Communities).
+    *   Lấy IDs từ `user:topics:{uid}` (Followed Topics).
+3.  **Adaptive Mixing:** Trộn dựa trên hành vi user (lướt nhanh vs dừng lại lâu).
 4.  **Hydration:** Query DB/Cache để lấy chi tiết nội dung.
-5.  **Response:** Trả về JSON cho Client.
+5.  **Response:** Trả về JSON với cursor cho pagination tiếp theo.
 
 ---
 *End of Specification.*

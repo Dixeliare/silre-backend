@@ -23,12 +23,9 @@ public class Comment {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "post_id")
-    private Post post; // NULL nếu là comment của thread
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "thread_id")
-    private ForumThread thread; // NULL nếu là comment của post
+    @JoinColumn(name = "post_id", nullable = false)
+    @NotNull
+    private Post post; // Comment của post
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "author_id", nullable = false)
@@ -37,7 +34,7 @@ public class Comment {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "parent_comment_id")
-    private Comment parentComment; // Nested comments (reply)
+    private Comment parentComment; // NULL = Comment chính, NOT NULL = Reply (chỉ 1 cấp - Instagram-Style)
 
     @Column(name = "content", nullable = false, columnDefinition = "TEXT")
     @NotBlank

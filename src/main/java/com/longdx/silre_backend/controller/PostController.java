@@ -3,6 +3,7 @@ package com.longdx.silre_backend.controller;
 import com.longdx.silre_backend.dto.request.CreatePostRequest;
 import com.longdx.silre_backend.dto.request.UpdatePostRequest;
 import com.longdx.silre_backend.dto.response.PostResponse;
+import com.longdx.silre_backend.dto.response.StandardResponse;
 import com.longdx.silre_backend.service.PostService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -87,16 +88,18 @@ public class PostController {
                     content = @Content
             )
     })
-    public ResponseEntity<PostResponse> createPost(
+    public ResponseEntity<StandardResponse<PostResponse>> createPost(
             @Valid @RequestBody CreatePostRequest request,
             Authentication authentication) {
         Long userId = getCurrentUserId(authentication);
         if (userId == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(StandardResponse.error("Authentication required"));
         }
 
         PostResponse response = postService.createPost(request, userId);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(StandardResponse.success("Post created successfully", response));
     }
 
     @GetMapping("/{publicId}")
@@ -116,13 +119,13 @@ public class PostController {
                     content = @Content
             )
     })
-    public ResponseEntity<PostResponse> getPost(
+    public ResponseEntity<StandardResponse<PostResponse>> getPost(
             @Parameter(description = "Post public ID", required = true)
             @PathVariable String publicId,
             Authentication authentication) {
         Long userId = getCurrentUserId(authentication);
         PostResponse response = postService.getPostByPublicId(publicId, userId);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(StandardResponse.success(response));
     }
 
     @PutMapping("/{publicId}")
@@ -153,18 +156,19 @@ public class PostController {
                     content = @Content
             )
     })
-    public ResponseEntity<PostResponse> updatePost(
+    public ResponseEntity<StandardResponse<PostResponse>> updatePost(
             @Parameter(description = "Post public ID", required = true)
             @PathVariable String publicId,
             @Valid @RequestBody UpdatePostRequest request,
             Authentication authentication) {
         Long userId = getCurrentUserId(authentication);
         if (userId == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(StandardResponse.error("Authentication required"));
         }
 
         PostResponse response = postService.updatePost(publicId, request, userId);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(StandardResponse.success("Post updated successfully", response));
     }
 
     @DeleteMapping("/{publicId}")
@@ -194,17 +198,19 @@ public class PostController {
                     content = @Content
             )
     })
-    public ResponseEntity<Void> deletePost(
+    public ResponseEntity<StandardResponse<Void>> deletePost(
             @Parameter(description = "Post public ID", required = true)
             @PathVariable String publicId,
             Authentication authentication) {
         Long userId = getCurrentUserId(authentication);
         if (userId == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(StandardResponse.error("Authentication required"));
         }
 
         postService.deletePost(publicId, userId);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.status(HttpStatus.OK)
+                .body(StandardResponse.success("Post deleted successfully", null));
     }
 
     @PostMapping("/{publicId}/like")
@@ -229,17 +235,18 @@ public class PostController {
                     content = @Content
             )
     })
-    public ResponseEntity<Void> likePost(
+    public ResponseEntity<StandardResponse<Void>> likePost(
             @Parameter(description = "Post public ID", required = true)
             @PathVariable String publicId,
             Authentication authentication) {
         Long userId = getCurrentUserId(authentication);
         if (userId == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(StandardResponse.error("Authentication required"));
         }
 
         postService.likePost(publicId, userId);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(StandardResponse.success("Post liked successfully", null));
     }
 
     @DeleteMapping("/{publicId}/like")
@@ -264,17 +271,18 @@ public class PostController {
                     content = @Content
             )
     })
-    public ResponseEntity<Void> unlikePost(
+    public ResponseEntity<StandardResponse<Void>> unlikePost(
             @Parameter(description = "Post public ID", required = true)
             @PathVariable String publicId,
             Authentication authentication) {
         Long userId = getCurrentUserId(authentication);
         if (userId == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(StandardResponse.error("Authentication required"));
         }
 
         postService.unlikePost(publicId, userId);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(StandardResponse.success("Post unliked successfully", null));
     }
 
     @GetMapping
@@ -289,7 +297,7 @@ public class PostController {
                     content = @Content(schema = @Schema(implementation = PostResponse.class))
             )
     })
-    public ResponseEntity<Page<PostResponse>> getFeed(
+    public ResponseEntity<StandardResponse<Page<PostResponse>>> getFeed(
             @Parameter(description = "Page number (0-indexed)", example = "0")
             @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "Page size", example = "20")
@@ -302,7 +310,7 @@ public class PostController {
         
         Long userId = getCurrentUserId(authentication);
         Page<PostResponse> posts = postService.getFeed(pageable, userId);
-        return ResponseEntity.ok(posts);
+        return ResponseEntity.ok(StandardResponse.success(posts));
     }
 
     @GetMapping("/user/{userPublicId}")
@@ -322,7 +330,7 @@ public class PostController {
                     content = @Content
             )
     })
-    public ResponseEntity<Page<PostResponse>> getPostsByUser(
+    public ResponseEntity<StandardResponse<Page<PostResponse>>> getPostsByUser(
             @Parameter(description = "User public ID", required = true)
             @PathVariable String userPublicId,
             @Parameter(description = "Page number (0-indexed)", example = "0")
@@ -335,7 +343,7 @@ public class PostController {
         
         Long userId = getCurrentUserId(authentication);
         Page<PostResponse> posts = postService.getPostsByUser(userPublicId, pageable, userId);
-        return ResponseEntity.ok(posts);
+        return ResponseEntity.ok(StandardResponse.success(posts));
     }
 
     @GetMapping("/user/{userPublicId}/personal")
@@ -355,7 +363,7 @@ public class PostController {
                     content = @Content
             )
     })
-    public ResponseEntity<Page<PostResponse>> getPersonalPostsByUser(
+    public ResponseEntity<StandardResponse<Page<PostResponse>>> getPersonalPostsByUser(
             @Parameter(description = "User public ID", required = true)
             @PathVariable String userPublicId,
             @Parameter(description = "Page number (0-indexed)", example = "0")
@@ -368,7 +376,7 @@ public class PostController {
         
         Long userId = getCurrentUserId(authentication);
         Page<PostResponse> posts = postService.getPersonalPostsByUser(userPublicId, pageable, userId);
-        return ResponseEntity.ok(posts);
+        return ResponseEntity.ok(StandardResponse.success(posts));
     }
 
     @GetMapping("/community/{communityPublicId}")
@@ -388,7 +396,7 @@ public class PostController {
                     content = @Content
             )
     })
-    public ResponseEntity<Page<PostResponse>> getPostsByCommunity(
+    public ResponseEntity<StandardResponse<Page<PostResponse>>> getPostsByCommunity(
             @Parameter(description = "Community public ID", required = true)
             @PathVariable String communityPublicId,
             @Parameter(description = "Page number (0-indexed)", example = "0")
@@ -401,6 +409,6 @@ public class PostController {
         
         Long userId = getCurrentUserId(authentication);
         Page<PostResponse> posts = postService.getPostsByCommunity(communityPublicId, pageable, userId);
-        return ResponseEntity.ok(posts);
+        return ResponseEntity.ok(StandardResponse.success(posts));
     }
 }

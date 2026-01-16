@@ -34,6 +34,13 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     // Find posts by topic
     Page<Post> findByTopic_Id(Long topicId, Pageable pageable);
 
+    // Find posts by series
+    Page<Post> findBySeries_Id(Long seriesId, Pageable pageable);
+
+    // Find posts by series ordered by creation (for series viewer)
+    @Query("SELECT p FROM Post p WHERE p.series.id = :seriesId ORDER BY p.createdAt ASC")
+    Page<Post> findSeriesPostsOrdered(@Param("seriesId") Long seriesId, Pageable pageable);
+
     // Find personal posts (community_id IS NULL)
     @Query("SELECT p FROM Post p WHERE p.community IS NULL AND p.author.internalId = :authorId")
     Page<Post> findPersonalPostsByAuthor(@Param("authorId") Long authorId, Pageable pageable);

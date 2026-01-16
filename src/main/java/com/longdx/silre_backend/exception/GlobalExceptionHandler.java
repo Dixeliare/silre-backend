@@ -1,5 +1,6 @@
 package com.longdx.silre_backend.exception;
 
+import com.longdx.silre_backend.dto.response.StandardResponse;
 import io.swagger.v3.oas.annotations.Hidden;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,10 +38,35 @@ public class GlobalExceptionHandler {
     private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     /**
+     * Helper method to create error response entity
+     * Used by .cursorrules pattern for consistent error responses
+     */
+    public static ResponseEntity<StandardResponse<?>> errorResponseEntity(String message, HttpStatus status) {
+        String errorCode = mapHttpStatusToErrorCode(status);
+        StandardResponse<?> response = StandardResponse.error(errorCode, message);
+        return new ResponseEntity<>(response, status);
+    }
+
+    /**
+     * Map HTTP status to error code
+     */
+    private static String mapHttpStatusToErrorCode(HttpStatus status) {
+        return switch (status) {
+            case BAD_REQUEST -> "BAD_REQUEST";
+            case UNAUTHORIZED -> "UNAUTHORIZED";
+            case FORBIDDEN -> "FORBIDDEN";
+            case NOT_FOUND -> "NOT_FOUND";
+            case INTERNAL_SERVER_ERROR -> "INTERNAL_SERVER_ERROR";
+            default -> "GENERIC_ERROR";
+        };
+    }
+
+    /**
      * Handle validation errors (from @Valid annotations)
+     * Returns detailed field-level validation errors
      */
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<Map<String, Object>> handleValidationExceptions(
+    public ResponseEntity<StandardResponse<Map<String, String>>> handleValidationExceptions(
             MethodArgumentNotValidException ex) {
         Map<String, String> errors = new HashMap<>();
         ex.getBindingResult().getAllErrors().forEach((error) -> {
@@ -49,11 +75,10 @@ public class GlobalExceptionHandler {
             errors.put(fieldName, errorMessage);
         });
 
-        Map<String, Object> response = new HashMap<>();
-        response.put("status", "error");
-        response.put("message", "Validation failed");
-        response.put("errors", errors);
-
+        StandardResponse<Map<String, String>> response = StandardResponse.validationError(
+            "Validation failed",
+            errors
+        );
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }
 
@@ -61,14 +86,10 @@ public class GlobalExceptionHandler {
      * Handle IllegalArgumentException (business logic errors)
      */
     @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, Object>> handleIllegalArgumentException(
+    public ResponseEntity<StandardResponse<?>> handleIllegalArgumentException(
             IllegalArgumentException ex) {
         logger.debug("IllegalArgumentException: {}", ex.getMessage());
-
-        Map<String, Object> response = new HashMap<>();
-        response.put("status", "error");
-        response.put("message", ex.getMessage());
-
+        StandardResponse<?> response = StandardResponse.error("INVALID_ARGUMENT", ex.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }
 
@@ -76,14 +97,11 @@ public class GlobalExceptionHandler {
      * Handle AuthenticationException (security errors)
      */
     @ExceptionHandler(AuthenticationException.class)
-    public ResponseEntity<Map<String, Object>> handleAuthenticationException(
+    public ResponseEntity<StandardResponse<?>> handleAuthenticationException(
             AuthenticationException ex) {
         logger.debug("AuthenticationException: {}", ex.getMessage());
-
-        Map<String, Object> response = new HashMap<>();
-        response.put("status", "error");
-        response.put("message", "Authentication failed: " + ex.getMessage());
-
+        StandardResponse<?> response = StandardResponse.error("AUTHENTICATION_FAILED", 
+            "Authentication failed: " + ex.getMessage());
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
     }
 
@@ -91,14 +109,10 @@ public class GlobalExceptionHandler {
      * Handle BadCredentialsException (invalid credentials)
      */
     @ExceptionHandler(BadCredentialsException.class)
-    public ResponseEntity<Map<String, Object>> handleBadCredentialsException(
+    public ResponseEntity<StandardResponse<?>> handleBadCredentialsException(
             BadCredentialsException ex) {
         logger.debug("BadCredentialsException: {}", ex.getMessage());
-
-        Map<String, Object> response = new HashMap<>();
-        response.put("status", "error");
-        response.put("message", "Invalid credentials");
-
+        StandardResponse<?> response = StandardResponse.error("INVALID_CREDENTIALS", "Invalid credentials");
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
     }
 
@@ -106,14 +120,10 @@ public class GlobalExceptionHandler {
      * Handle ForbiddenException (authorization errors)
      */
     @ExceptionHandler(ForbiddenException.class)
-    public ResponseEntity<Map<String, Object>> handleForbiddenException(
+    public ResponseEntity<StandardResponse<?>> handleForbiddenException(
             ForbiddenException ex) {
         logger.debug("ForbiddenException: {}", ex.getMessage());
-
-        Map<String, Object> response = new HashMap<>();
-        response.put("status", "error");
-        response.put("message", ex.getMessage());
-
+        StandardResponse<?> response = StandardResponse.error("FORBIDDEN", ex.getMessage());
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
     }
 
@@ -121,13 +131,10 @@ public class GlobalExceptionHandler {
      * Handle generic exceptions
      */
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<Map<String, Object>> handleGenericException(Exception ex) {
+    public ResponseEntity<StandardResponse<?>> handleGenericException(Exception ex) {
         logger.error("Unexpected error: ", ex);
-
-        Map<String, Object> response = new HashMap<>();
-        response.put("status", "error");
-        response.put("message", "An unexpected error occurred");
-
+        StandardResponse<?> response = StandardResponse.error("INTERNAL_SERVER_ERROR", 
+            "An unexpected error occurred");
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
     }
 }

@@ -1,65 +1,88 @@
 # PRODUCT REQUIREMENTS & SYSTEM OVERVIEW
 
-**Tên dự án:** (Tạm gọi) Hybrid Social Platform  
-**Phiên bản:** 1.0  
-**Ngày lập:** 26/12/2025
+**Tên dự án:** Silre - Social Platform  
+**Phiên bản:** 2.0  
+**Ngày cập nhật:** 15/01/2026
 
 ---
 
-## 1. VẤN ĐỀ & GIẢI PHÁP (PROBLEM & SOLUTION)
+## 1. KIẾN TRÚC & ĐỊNH HƯỚNG (CORE LOGIC)
 
-### Vấn đề (Problem)
-Người dùng hiện tại phải dùng nhiều ứng dụng rời rạc:
-*   Một nơi để **hỏi đáp chuyên sâu** (như Reddit/Voz/StackOverflow).
-*   Một nơi để **giải trí nhanh** (như TikTok/Threads/Twitter).
-*   Một nơi để **sinh hoạt nhóm** (như Facebook Groups).
+### 1.1. Mô hình kiến trúc
+- **Modular Monolith:** Code nhanh, không bị rối mạng/Docker nhưng vẫn phân tách module sạch sẽ.
+- **Tách biệt rõ ràng:** Mỗi module độc lập, dễ maintain và scale sau này.
 
-### Giải pháp (Solution)
-Xây dựng một **Super App** kết hợp 2 thế giới:
-1.  **Chiều sâu:** Hệ thống Forum 3 cấp lưu trữ kiến thức.
-2.  **Tốc độ:** Newsfeed dạng "Threads" tập trung vào khám phá nội dung viral từ người lạ và cộng đồng.
+### 1.2. Loại bỏ Forum
+**Tuyệt đối không có Forum:** Không có giao diện dạng thread/danh sách bài viết kiểu cũ. Tránh làm rối UI và gãy cảm xúc người dùng.
 
----
-
-## 2. CÁC PHÂN HỆ CHÍNH (CORE MODULES)
-
-### A. Phân hệ Forum (Knowledge Base)
-Hoạt động theo mô hình diễn đàn truyền thống để thảo luận sâu, lưu trữ kiến thức lâu dài.
-
-**Cấu trúc 3 lớp (3 Layers):**
-1.  **Categories:** Danh mục lớn (VD: Công nghệ, Đời sống).
-2.  **Sub-forums:** Chủ đề cụ thể (VD: Java Backend, Chuyện trò linh tinh).
-3.  **Threads:** Bài thảo luận (Bắt buộc có **Tiêu đề** + **Nội dung**).
-
-**Tính chất:** Nội dung tồn tại lâu dài (Evergreen), tìm kiếm dễ dàng, đề cao chất lượng tranh luận.
-
-### B. Phân hệ Community & Personal (Social Network)
-Hoạt động theo mô hình Mạng xã hội (Facebook Group/Threads/Twitter).
-
-**Thành phần:**
-*   **Community:** Nhóm sinh hoạt chung, sở thích.
-*   **Personal Wall:** Trang cá nhân của user.
-*   **Posts:** Bài đăng nhanh (Không tiêu đề, chú trọng Ảnh/Video/Text ngắn).
-
-**Tính chất:** Real-time, giải trí, trôi nhanh theo thời gian (Ephemeral).
-
-### C. Smart Newsfeed (The "Mixer")
-Trái tim của ứng dụng, nơi giữ chân người dùng.
-
-*   **Trải nghiệm:** Cuộn vô tận (Infinite Scroll), tự động phát video/ảnh.
-*   **Cơ chế:** Ưu tiên hiển thị nội dung hay của người lạ (Discovery) thay vì chỉ hiển thị bạn bè.
+### 1.3. Community là "Nguồn cấp" (Not a Folder)
+- **User "Join" cộng đồng để định hướng thuật toán:** Khi user join một community (ví dụ: Hunter x Hunter), nội dung từ community đó sẽ tự động xuất hiện trong Feed.
+- **Nội dung tự tìm đến Feed:** Thay vì bắt User phải mò vào phòng, nội dung từ Community sẽ tự động được đẩy vào Feed của User.
+- **Mục tiêu:** Tạo cảm giác thuộc về một nhóm nhưng trải nghiệm vẫn mượt mà như lướt Instagram.
 
 ---
 
-## 3. LOGIC HIỂN THỊ FEED (THE 70-20-10 RULE)
+## 2. TRẢI NGHIỆM FEED (DISCOVERY & DISCUSSION)
 
-Newsfeed không hiển thị theo thời gian thuần túy mà được trộn theo tỷ lệ cố định để tối ưu hóa việc khám phá nội dung mới nhưng vẫn giữ được kết nối cá nhân.
+### 2.1. Thuật toán tự thích nghi
+- **Không dùng nút chuyển chế độ (Switch):** Thuật toán tự động điều chỉnh dựa trên hành vi người dùng.
+- **Lướt nhanh:** Ưu tiên ảnh đẹp, nội dung giải trí (Dopamine) để giữ chân user.
+- **Dừng lại lâu/Bấm comment:** Thuật toán hiểu là User muốn "Hóng biến" (Talk mode), bắt đầu đẩy các bài có thảo luận sôi nổi.
 
-| Nguồn (Source) | Tỷ lệ | Mô tả |
-| :--- | :--- | :--- |
-| **Discovery (Viral)** | **70%** | Các bài Post cá nhân hoặc Community Post của người lạ đang có điểm Viral cao. |
-| **Following (High Quality)** | **20%** | Bài của bạn bè/Community đã tham gia, NHƯNG chỉ hiện những bài có tương tác tốt (lọc bỏ bài rác). |
-| **Forum Highlights** | **10%** | Các Thread đang tranh luận "nóng" trong Forum để user biết đến sự tồn tại của Forum. |
+### 2.2. Đề xuất nội dung
+- **Trộn lẫn:** Giữa người theo dõi (Following) và các cộng đồng đã tham gia (Joined Communities).
+- **Discovery:** Ưu tiên nội dung viral từ người lạ để khám phá mới.
+- **Personalization:** Feed được cá nhân hóa dựa trên hành vi tương tác.
 
 ---
+
+## 3. HỆ THỐNG COMMENT (KIỂU INSTAGRAM - FLAT)
+
+### 3.1. Phân cấp tối đa 2 cấp
+- **Comment chính:** Comment gốc của bài post.
+- **Reply:** Phản hồi cho comment chính (tối đa 1 cấp).
+
+### 3.2. Trải nghiệm phẳng
+- **Không thụt lề sâu:** Khác với Reddit/Threads, UI phẳng và dễ đọc.
+- **"Xem thêm" load reply tại chỗ:** Khi bấm "Xem thêm", reply được load ngay tại chỗ để user kéo xuống đọc liên tục (scroll).
+
+### 3.3. Tag tên (@) mạnh mẽ
+- **Định danh người được trả lời:** Tận dụng mạnh việc Tag tên (@) để định danh người đang được trả lời.
+- **"Vũ khí" tranh luận:** Giúp các cuộc tranh luận/chửi nhau diễn ra kịch tính và dễ theo dõi.
+
+---
+
+## 4. ĐẶC QUYỀN CHO CREATOR (HỌA SĨ MANGA/V.I.P)
+
+Đây là phần để lôi kéo các họa sĩ Nhật và người có tầm ảnh hưởng:
+
+### 4.1. Hệ thống Series
+- **Gom bài đăng thành tập/chapter:** Cho phép creator gom các bài đăng lẻ thành một tập/chapter.
+- **Trình xem chuyên dụng (Viewer):** User có thể lướt xem trọn bộ bằng viewer thay vì xem từng ảnh rời rạc.
+
+### 4.2. Chất lượng ảnh Gốc (Zero Compression)
+- **Không nén ảnh:** Không nén ảnh làm vỡ nét vẽ.
+- **Độ phân giải cao nhất:** Cho phép ảnh độ phân giải cao nhất để giữ nguyên chất lượng tác phẩm.
+
+### 4.3. Bảo vệ tác phẩm
+- **Watermark tự động:** Tích hợp tính năng gắn Watermark tự động để bảo vệ bản quyền.
+
+### 4.4. Lọc Bot/Spam
+- **Cơ chế riêng:** Dùng cơ chế riêng để dọn sạch rác, quảng cáo trong comment.
+- **Chỉ giữ tương tác thật:** Chỉ giữ lại tương tác thật của con người.
+
+---
+
+## 5. ĐẶC TẢ BACKEND (DÀNH CHO DEVELOPER)
+
+### 5.1. Database (PostgreSQL)
+- **Bảng Posts:** Có `community_id` và `series_id` để phân phối nội dung.
+- **Bảng Comments:** Dùng `parent_id` cho reply cấp 2.
+
+### 5.2. Kỹ thuật xử lý
+- **Cursor-based Pagination:** Sử dụng cho Feed và Comment để không bị lag khi user "lướt mãi không hết".
+- **Redis:** Quản lý các tag/mention thời gian thực.
+
+---
+
 *End of Requirement.*

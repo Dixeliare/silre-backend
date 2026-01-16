@@ -2,7 +2,6 @@ package com.longdx.silre_backend.model;
 
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
-
 import jakarta.persistence.*;
 import com.longdx.silre_backend.config.TsidGenerator;
 import jakarta.validation.constraints.NotBlank;
@@ -12,11 +11,16 @@ import lombok.Data;
 
 import java.time.OffsetDateTime;
 
+/**
+ * Series Entity
+ * 
+ * Cho phép Creator gom các bài đăng lẻ thành một tập/chapter.
+ * User có thể lướt xem trọn bộ bằng viewer chuyên dụng thay vì xem từng ảnh rời rạc.
+ */
 @Entity
-@Table(name = "categories", 
-       uniqueConstraints = @UniqueConstraint(columnNames = {"forum_id", "slug"}))
+@Table(name = "series")
 @Data
-public class Category {
+public class Series {
 
     @Id
     @TsidGenerator
@@ -25,25 +29,29 @@ public class Category {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "forum_id", nullable = false)
+    @JoinColumn(name = "creator_id", nullable = false)
     @NotNull
-    private Forum forum; // Forum chứa category này
+    private User creator; // Creator của series
 
-    @Column(name = "name", nullable = false)
+    @Column(name = "title", nullable = false, length = 255)
     @NotBlank
     @Size(max = 255)
-    private String name; // Display name
-
-    @Column(name = "slug", nullable = false)
-    @NotBlank
-    @Size(max = 255)
-    private String slug; // Slug (unique trong forum, không phải global)
+    private String title; // Tên series
 
     @Column(name = "description", columnDefinition = "TEXT")
-    private String description;
+    private String description; // Mô tả series
 
-    @Column(name = "display_order", nullable = false)
-    private Integer displayOrder = 0; // Thứ tự hiển thị trong forum
+    @Column(name = "public_id", unique = true, nullable = false, length = 12)
+    @NotBlank
+    @Size(max = 12)
+    private String publicId; // Short ID cho URL
+
+    @Column(name = "slug", length = 350)
+    @Size(max = 350)
+    private String slug; // Slug (SEO)
+
+    @Column(name = "post_count", nullable = false)
+    private Integer postCount = 0; // Số bài trong series (denormalized)
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
@@ -61,4 +69,3 @@ public class Category {
         updatedAt = OffsetDateTime.now();
     }
 }
-

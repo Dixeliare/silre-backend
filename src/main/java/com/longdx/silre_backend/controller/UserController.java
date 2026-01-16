@@ -1,6 +1,7 @@
 package com.longdx.silre_backend.controller;
 
 import com.longdx.silre_backend.dto.request.CreateUserRequest;
+import com.longdx.silre_backend.dto.response.StandardResponse;
 import com.longdx.silre_backend.dto.response.UserResponse;
 import com.longdx.silre_backend.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -49,26 +50,22 @@ public class UserController {
                      "Returns the created user with generated public ID (NanoID) and internal ID (TSID)."
     )
     @ApiResponses(value = {
-        @ApiResponse(
+            @ApiResponse(
             responseCode = "201",
             description = "User created successfully",
             content = @Content(schema = @Schema(implementation = UserResponse.class))
         ),
-        @ApiResponse(
+            @ApiResponse(
             responseCode = "400",
             description = "Invalid input or email already exists",
             content = @Content
         )
     })
     @PostMapping
-    public ResponseEntity<UserResponse> createUser(@Valid @RequestBody CreateUserRequest request) {
-        try {
-            UserResponse user = userService.createUser(request);
-            return ResponseEntity.status(HttpStatus.CREATED).body(user);
-        } catch (IllegalArgumentException e) {
-            // TODO: Use proper exception handler
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
-        }
+    public ResponseEntity<StandardResponse<UserResponse>> createUser(@Valid @RequestBody CreateUserRequest request) {
+        UserResponse user = userService.createUser(request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(StandardResponse.success("User created successfully", user));
     }
 
     /**
@@ -81,24 +78,25 @@ public class UserController {
                      "Public ID is used in URLs and public APIs instead of internal TSID."
     )
     @ApiResponses(value = {
-        @ApiResponse(
+            @ApiResponse(
             responseCode = "200",
             description = "User found",
             content = @Content(schema = @Schema(implementation = UserResponse.class))
         ),
-        @ApiResponse(
+            @ApiResponse(
             responseCode = "404",
             description = "User not found",
             content = @Content
         )
     })
     @GetMapping("/{publicId}")
-    public ResponseEntity<UserResponse> getUserByPublicId(
+    public ResponseEntity<StandardResponse<UserResponse>> getUserByPublicId(
             @Parameter(description = "User's public ID (NanoID)", required = true, example = "Xy9zQ2mP")
             @PathVariable String publicId) {
         Optional<UserResponse> user = userService.getUserByPublicId(publicId);
-        return user.map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+        return user.map(u -> ResponseEntity.ok(StandardResponse.success(u)))
+                .orElse(ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(StandardResponse.error("User not found")));
     }
 
     /**
@@ -110,31 +108,27 @@ public class UserController {
         description = "Update user's display name and/or bio. Both fields are optional."
     )
     @ApiResponses(value = {
-        @ApiResponse(
+            @ApiResponse(
             responseCode = "200",
             description = "Profile updated successfully",
             content = @Content(schema = @Schema(implementation = UserResponse.class))
         ),
-        @ApiResponse(
+            @ApiResponse(
             responseCode = "404",
             description = "User not found",
             content = @Content
         )
     })
     @PatchMapping("/{publicId}")
-    public ResponseEntity<UserResponse> updateProfile(
+    public ResponseEntity<StandardResponse<UserResponse>> updateProfile(
             @Parameter(description = "User's public ID (NanoID)", required = true, example = "Xy9zQ2mP")
             @PathVariable String publicId,
             @Parameter(description = "New display name (optional)")
             @RequestParam(required = false) String displayName,
             @Parameter(description = "New bio text (optional)")
             @RequestParam(required = false) String bio) {
-        try {
-            UserResponse user = userService.updateProfile(publicId, displayName, bio);
-            return ResponseEntity.ok(user);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.notFound().build();
-        }
+        UserResponse user = userService.updateProfile(publicId, displayName, bio);
+        return ResponseEntity.ok(StandardResponse.success("Profile updated successfully", user));
     }
 
     /**
@@ -147,18 +141,18 @@ public class UserController {
                      "Useful for registration form validation."
     )
     @ApiResponses(value = {
-        @ApiResponse(
+            @ApiResponse(
             responseCode = "200",
             description = "Email check result",
             content = @Content(schema = @Schema(type = "boolean"))
         )
     })
     @GetMapping("/check-email")
-    public ResponseEntity<Boolean> checkEmail(
+    public ResponseEntity<StandardResponse<Boolean>> checkEmail(
             @Parameter(description = "Email address to check", required = true, example = "user@example.com")
             @RequestParam String email) {
         boolean exists = userService.emailExists(email);
-        return ResponseEntity.ok(exists);
+        return ResponseEntity.ok(StandardResponse.success(exists));
     }
 }
 
